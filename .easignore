@@ -1,0 +1,13 @@
+node_modules/
+.expo/
+dist/
+web-build/
+.DS_Store
+*.tsbuildinfo
+*.mov
+*.mp4
+*.fig
+*.pdf
+*.zip
+outputs/
+work/

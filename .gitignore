@@ -33,6 +33,29 @@ yarn-error.*
 # local env files
 .env*.local
 
+# local presentation/reference exports
+*.fig
+*.mp4
+*.mov
+/502 FINAL_Qi Shen.pdf
+/comm 502 final  - Qi Shen pre deck.pdf
+
+# design-process assets that are not required by the MVP app
+/assets/dev/
+/src/devScreens/
+/assets/keepsakes/imported-originals/
+/assets/keepsakes/replaced-backup/
+/assets/keepsakes/feelings/
+/assets/keepsakes/meals/
+/assets/keepsakes/monthly/
+/assets/keepsakes/notes/
+/assets/keepsakes/people/
+/assets/keepsakes/photographs/
+/assets/keepsakes/rare/
+/assets/keepsakes/rhythm/
+/assets/keepsakes/seasonal/
+/assets/keepsakes/starter/
+
 # typescript
 *.tsbuildinfo
 

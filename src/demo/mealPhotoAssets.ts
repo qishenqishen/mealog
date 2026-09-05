@@ -1,0 +1,16 @@
+export const DEMO_MEAL_PHOTOS = {
+  berryToast: require('../../assets/demo/meal-photos/berry-toast.jpg'),
+  blueberryToast: require('../../assets/demo/meal-photos/blueberry-toast.jpg'),
+  cafeTiramisuDrinks: require('../../assets/demo/meal-photos/cafe-tiramisu-drinks.jpg'),
+  eveningDrinks: require('../../assets/demo/meal-photos/evening-drinks.jpg'),
+  homeStew: require('../../assets/demo/meal-photos/home-stew.jpg'),
+  pastaBowl: require('../../assets/demo/meal-photos/pasta-bowl.jpg'),
+  riceBowl: require('../../assets/demo/meal-photos/rice-bowl.jpg'),
+  saladWindowTable: require('../../assets/demo/meal-photos/salad-window-table.jpg'),
+  salmonAvocadoBowl: require('../../assets/demo/meal-photos/salmon-avocado-bowl.jpg'),
+  sharedHotpot: require('../../assets/demo/meal-photos/shared-hotpot.jpg'),
+  sharedTableSpread: require('../../assets/demo/meal-photos/shared-table-spread.jpg'),
+  smallPlatedBites: require('../../assets/demo/meal-photos/small-plated-bites.jpg'),
+  sushiSet: require('../../assets/demo/meal-photos/sushi-set.jpg'),
+  tableFeast: require('../../assets/demo/meal-photos/table-feast.jpg'),
+} as const;
