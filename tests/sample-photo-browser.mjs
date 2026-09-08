@@ -6,9 +6,9 @@ const base = process.env.MEALOG_URL || 'http://127.0.0.1:8793';
 const output = process.env.QA_OUTPUT || 'artifacts/sample-photo-refresh';
 const choices = [
   ['Toast', 'blueberry-toast'],
-  ['Pasta brunch', 'cafe-pasta-spread'],
-  ['Hand rolls', 'sushi-hand-rolls'],
-  ['Mango rice', 'mango-sticky-rice'],
+  ['Cream toast', 'cream-toast'],
+  ['Granola bowl', 'fruit-granola-bowl'],
+  ['Seasonal salad', 'seasonal-salad'],
   ['Hotpot', 'table-feast'],
 ];
 await mkdir(output, { recursive: true });
@@ -58,12 +58,12 @@ try {
   await page.goto(base + '/profile');
   await page.getByText('中文', { exact: true }).click();
   await page.goto(base + '/add');
-  for (const label of ['吐司', '意面早午餐', '寿司手卷', '芒果糯米饭', '火锅']) {
+  for (const label of ['吐司', '奶油吐司', '水果麦片碗', '时令沙拉', '火锅']) {
     await page.getByRole('button', { name: label, exact: true }).waitFor();
   }
   for (const [name, width, height] of [['mobile', 390, 844], ['desktop', 1440, 1000]]) {
     await page.setViewportSize({ width, height });
-    await page.getByRole('button', { name: '芒果糯米饭', exact: true }).click();
+    await page.getByRole('button', { name: '时令沙拉', exact: true }).click();
     await page.getByRole('button', { name: '吐司', exact: true }).scrollIntoViewIfNeeded();
     await readable(page);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

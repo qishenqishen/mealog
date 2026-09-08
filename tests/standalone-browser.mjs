@@ -96,7 +96,7 @@ try {
   log('Upload, add mood/person, save to detail, delete computer source, refresh', { id: saved.id, uri: saved.photoUri });
 
   await page.getByText('Edit', { exact: true }).click();
-  await page.getByRole('button', { name: 'Pasta brunch', exact: true }).click();
+  await page.getByRole('button', { name: 'Cream toast', exact: true }).click();
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
   await page.waitForURL(/\/meal\//);
   const replaced = (await state(page, 'meals')).find((meal) => meal.id === saved.id);
@@ -129,7 +129,7 @@ try {
 
   await visit(page, '/add');
   await page.getByLabel('Meal name', { exact: true }).fill('QA retry memory');
-  await page.getByRole('button', { name: 'Hand rolls', exact: true }).click();
+  await page.getByRole('button', { name: 'Granola bowl', exact: true }).click();
   await page.evaluate(() => {
     const put = IDBObjectStore.prototype.put;
     window.__failMedia = true;
