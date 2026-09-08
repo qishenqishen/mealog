@@ -3,6 +3,7 @@ export const DEMO_MEAL_PHOTOS = {
   blueberryToast: require('../../assets/demo/meal-photos/blueberry-toast.jpg'),
   cafePastaSpread: require('../../assets/demo/meal-photos/cafe-pasta-spread.jpg'),
   cafeTiramisuDrinks: require('../../assets/demo/meal-photos/cafe-tiramisu-drinks.jpg'),
+  counterDessert: require('../../assets/demo/meal-photos/counter-dessert.jpg'),
   creamToast: require('../../assets/demo/meal-photos/cream-toast.jpg'),
   eveningDrinks: require('../../assets/demo/meal-photos/evening-drinks.jpg'),
   fruitGranolaBowl: require('../../assets/demo/meal-photos/fruit-granola-bowl.jpg'),

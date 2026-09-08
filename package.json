@@ -10,7 +10,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run typecheck:worker",
-    "test": "node tests/storage.test.cjs && node src/i18n/index.test.cjs && node worker/tests.cjs",
+    "test": "node tests/storage.test.cjs && node tests/demo-photos.test.cjs && node src/i18n/index.test.cjs && node worker/tests.cjs",
     "test:browser": "node tests/standalone-browser.mjs",
     "typecheck:worker": "tsc --noEmit -p worker/tsconfig.json",
     "build": "npm run check && npm run export:web",

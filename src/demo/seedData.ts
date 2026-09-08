@@ -91,6 +91,8 @@ interface DemoSession {
   anchorDate: string;
   complete: boolean;
   result?: DemoSeedResult;
+  photoCollectionVersion?: 1;
+  photoCollectionAnchorDate?: string;
 }
 
 const PHOTO_ASSETS = DEMO_MEAL_PHOTOS;
@@ -288,6 +290,108 @@ const CURRENT_MONTH_MEALS: DemoMealInput[] = [
   },
 ];
 
+const PHOTO_COLLECTION_MEALS: DemoMealInput[] = [
+  {
+    id: 'demo-meal-current-photo-01', day: 1, mealType: 'breakfast', time: '09:15',
+    title: 'Cream toast and matcha', location: 'Cafe counter',
+    moodTags: ['peaceful'], peopleTags: ['just-me'], personIds: [],
+    note: 'Cream melting into warm toast, with a glass of matcha beside it.',
+    photoAsset: PHOTO_ASSETS.creamToast,
+  },
+  {
+    id: 'demo-meal-current-photo-02', day: 2, mealType: 'breakfast', time: '09:40',
+    title: 'A bowl of fruit and granola', location: 'Morning cafe',
+    moodTags: ['everyday'], peopleTags: ['shared-with-friend'], personIds: ['demo-person-amy'],
+    note: 'Amy and I ordered fruit bowls and lingered over breakfast.',
+    photoAsset: PHOTO_ASSETS.fruitGranolaBowl,
+  },
+  {
+    id: 'demo-meal-current-photo-04', day: 4, mealType: 'lunch', time: '12:20',
+    title: 'A colorful salad at the counter', location: 'Window cafe',
+    moodTags: ['peaceful'], peopleTags: ['work-lunch'], personIds: ['demo-person-kai'],
+    note: 'A bright plate of seasonal leaves and fruit, with our drinks lined up beside it.',
+    photoAsset: PHOTO_ASSETS.seasonalSalad,
+  },
+  {
+    id: 'demo-meal-current-photo-06', day: 6, mealType: 'treat', time: '15:30',
+    title: 'One more spoonful of dessert', location: 'Dessert counter',
+    moodTags: ['healing'], peopleTags: ['just-me'], personIds: [],
+    note: 'A little dessert and a cold glass of water at the wooden counter.',
+    photoAsset: PHOTO_ASSETS.counterDessert,
+  },
+  {
+    id: 'demo-meal-current-photo-09', day: 9, mealType: 'lunch', time: '13:05',
+    title: 'Pasta for a long lunch', location: 'Neighborhood cafe',
+    moodTags: ['heartfelt'], peopleTags: ['shared-with-friend'], personIds: ['demo-person-amy'],
+    note: 'We made time for lunch together and shared a plate of pasta.',
+    photoAsset: PHOTO_ASSETS.cafePastaSpread,
+  },
+  {
+    id: 'demo-meal-current-photo-12', day: 12, mealType: 'dinner', time: '18:45',
+    title: 'Hand rolls with Lina', location: 'Sushi counter',
+    moodTags: ['celebratory'], peopleTags: ['family-table'], personIds: ['demo-person-lina'],
+    note: 'We chose different hand rolls so we could compare our favorites.',
+    photoAsset: PHOTO_ASSETS.sushiHandRolls,
+  },
+  {
+    id: 'demo-meal-current-photo-16', day: 16, mealType: 'treat', time: '16:10',
+    title: 'Mango sticky rice to share', location: 'Afternoon table',
+    moodTags: ['peaceful'], peopleTags: ['shared-with-friend'], personIds: ['demo-person-jordan'],
+    note: 'Two spoons and one plate of mango sticky rice.',
+    photoAsset: PHOTO_ASSETS.mangoStickyRice,
+  },
+  {
+    id: 'demo-meal-current-photo-19', day: 19, mealType: 'dinner', time: '19:00',
+    title: 'A warm stew at home', location: 'Kitchen table',
+    moodTags: ['nostalgic'], peopleTags: ['family-table'], personIds: ['demo-person-mom'],
+    note: 'Mom brought the warm stew to the table, and we sat down together.',
+    photoAsset: PHOTO_ASSETS.homeStew,
+  },
+  {
+    id: 'demo-meal-current-photo-28', day: 28, mealType: 'lunch', time: '12:30',
+    title: 'A little sushi lunch', location: 'Lunch counter',
+    moodTags: ['everyday'], peopleTags: ['just-me'], personIds: [],
+    note: 'A small sushi set, saved here before the first bite.',
+    photoAsset: PHOTO_ASSETS.sushiSet,
+  },
+];
+
+function photoCollectionMeals(userId: string, anchor: Date): MealEntry[] {
+  return [
+    ...PHOTO_COLLECTION_MEALS.map((input) => buildMeal(input, userId, anchor, true)),
+    ...PHOTO_COLLECTION_MEALS
+      .filter((input) => input.day === 'today' || input.day <= anchor.getDate())
+      .map((input) => buildMeal(input, userId, anchor)),
+  ];
+}
+
+async function expandPhotoCollection(session: DemoSession, userId: string, fallback: DemoSeedResult): Promise<DemoSeedResult> {
+  if (session.photoCollectionVersion === 1) return session.result ?? fallback;
+  const existing = await getMeals();
+  // A completed installation without sample meals has opted out or contains only personal/legacy data.
+  if (!existing.some((meal) => meal.origin === 'sample' && meal.id.startsWith('demo-meal-'))) {
+    await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({ ...session, photoCollectionVersion: 1 }));
+    return session.result ?? fallback;
+  }
+
+  const nextSession = { ...session, photoCollectionAnchorDate: session.photoCollectionAnchorDate ?? new Date().toISOString() };
+  await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(nextSession));
+  const people = new Set((await getPeopleProfiles()).map((person) => person.id));
+  for (const meal of photoCollectionMeals(userId, new Date(nextSession.photoCollectionAnchorDate))) {
+    if (await getMealById(meal.id)) continue;
+    meal.personIds = meal.personIds?.filter((id) => people.has(id));
+    await saveMealMemory(meal, meal.personIds ?? []);
+  }
+  const achievements = await evaluateAndPersistAchievements('HISTORICAL_RECALCULATION');
+  const result = {
+    ...(session.result ?? fallback),
+    mealsPrepared: (await getMeals()).filter((meal) => meal.origin === 'sample').length,
+    keepsakesFound: achievements.achievements.filter((achievement) => achievement.progress.unlockedAt).length,
+  };
+  await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({ ...nextSession, photoCollectionVersion: 1, result }));
+  return result;
+}
+
 async function prepareDemoData(): Promise<DemoSeedResult> {
   const userId = await getCurrentUserId();
   const raw = await AsyncStorage.getItem(DEMO_SESSION_KEY);
@@ -297,11 +401,11 @@ async function prepareDemoData(): Promise<DemoSeedResult> {
   const anchor = new Date(session.anchorDate);
   const anchorMonth = makeDate(anchor.getFullYear(), anchor.getMonth(), 1).slice(0, 7);
   const emptyResult = { mealsPrepared: 0, peoplePrepared: 0, sharedPhotosPrepared: 0, keepsakesFound: 0, anchorMonth };
-  if (session.complete) return session.result ?? emptyResult;
+  if (session.complete) return expandPhotoCollection(session, userId, emptyResult);
 
   // Existing installations keep their own table. A persisted session makes new imports resumable.
   if (!raw && ((await getMeals()).length || (await getPeopleProfiles()).length)) {
-    await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({ ...session, complete: true, result: emptyResult }));
+    await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({ ...session, complete: true, photoCollectionVersion: 1, result: emptyResult }));
     return emptyResult;
   }
   await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session));
@@ -329,6 +433,7 @@ async function prepareDemoData(): Promise<DemoSeedResult> {
     ...CURRENT_MONTH_MEALS
       .filter((input) => input.day === 'today' || input.day <= anchor.getDate())
       .map((input) => buildMeal(input, userId, anchor)),
+    ...photoCollectionMeals(userId, anchor),
   ];
 
   for (const meal of meals) {
@@ -382,7 +487,7 @@ async function prepareDemoData(): Promise<DemoSeedResult> {
     keepsakesFound: result.achievements.filter((achievement) => achievement.progress.unlockedAt).length,
     anchorMonth,
   };
-  await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({ ...session, complete: true, result: summary }));
+  await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({ ...session, complete: true, photoCollectionVersion: 1, result: summary }));
   return summary;
 }
 
