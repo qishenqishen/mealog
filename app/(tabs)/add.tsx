@@ -33,13 +33,12 @@ import {
 } from '../../src/types';
 import { colors, shadow } from '../../src/theme';
 import PeoplePickerSheet from '../../src/components/PeoplePickerSheet';
-import { requestLocationPermission, requestPhotosPermission } from '../../src/services/permissions';
+import { requestCameraPermission, requestLocationPermission, requestPhotosPermission } from '../../src/services/permissions';
 import {
-  buildManualMealLocation,
+  resolveMealLocationForSave,
   buildMealEatenAt,
   formatMealLocation,
   getCurrentMealLocation,
-  getCurrentMealLocationIfAllowed,
 } from '../../src/services/mealMetadata';
 import StackedAvatarGroup from '../../src/components/StackedAvatarGroup';
 import { DEMO_MEAL_PHOTOS } from '../../src/demo/mealPhotoAssets';
@@ -213,6 +212,8 @@ export default function AddScreen() {
       : undefined;
   const draftId = useRef(generateId());
   const saveInFlight = useRef(false);
+  const locationRequest = useRef(0);
+  const pickingPhoto = useRef(false);
   const now = useMemo(() => new Date(), []);
 
   const [mealType, setMealType] = useState<MealType>('lunch');
@@ -244,6 +245,7 @@ export default function AddScreen() {
   );
 
   const resetForm = () => {
+    locationRequest.current += 1;
     draftId.current = generateId();
     setSaveError(undefined);
     const freshNow = new Date();
@@ -266,6 +268,8 @@ export default function AddScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    locationRequest.current += 1;
+    setLocating(false);
 
     getPeopleProfiles().then((profiles) => {
       if (!cancelled) setPeopleProfiles(profiles);
@@ -273,7 +277,7 @@ export default function AddScreen() {
 
     if (!editMealId) {
       if (editingMeal) resetForm();
-      return undefined;
+      return () => { cancelled = true; locationRequest.current += 1; };
     }
 
     setLoadingEditMeal(true);
@@ -316,31 +320,19 @@ export default function AddScreen() {
 
     return () => {
       cancelled = true;
+      locationRequest.current += 1;
     };
     // The form intentionally resets only when the edit target changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editMealId]);
 
-  useEffect(() => {
-    if (editMealId) return undefined;
-    let cancelled = false;
-
-    getCurrentMealLocationIfAllowed()
-      .then((currentLocation) => {
-        if (cancelled || !currentLocation) return;
-        setLocationDetails(currentLocation);
-        const label = formatMealLocation(currentLocation);
-        if (label) {
-          setLocation((current) => current || label);
-          setLocationStatus('Current place added quietly because location was already allowed.');
-        }
-      })
-      .catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-    };
-  }, [editMealId]);
+  const editPlace = (value: string) => {
+    locationRequest.current += 1;
+    setLocating(false);
+    setLocation(value);
+    setLocationDetails(undefined);
+    setLocationStatus(undefined);
+  };
 
   const applyMealLocation = (nextLocation: MealLocation) => {
     setLocationDetails(nextLocation);
@@ -350,47 +342,48 @@ export default function AddScreen() {
 
   const handleUseCurrentLocation = async () => {
     if (locating) return;
-
+    const request = ++locationRequest.current;
     setLocating(true);
     try {
       const permission = await requestLocationPermission();
+      if (request !== locationRequest.current) return;
       if (!permission.granted) {
         notify(permission.message ?? 'Location is optional. You can still type a place by hand.');
         return;
       }
 
       const currentLocation = await getCurrentMealLocation();
+      if (request !== locationRequest.current) return;
       applyMealLocation(currentLocation);
       setLocationStatus('Current place added. You can still edit the text.');
     } catch {
-      notify('Mealog could not read your current place. You can still type it by hand.');
+      if (request === locationRequest.current) notify('Mealog could not read your current place. You can still type it by hand.');
     } finally {
-      setLocating(false);
+      if (request === locationRequest.current) setLocating(false);
     }
   };
 
-  const handlePickPhoto = async () => {
+  const handlePhoto = async (camera: boolean) => {
+    if (pickingPhoto.current) return;
+    pickingPhoto.current = true;
     try {
-    const permission = await requestPhotosPermission();
-    if (!permission.granted) {
-      notify(permission.message ?? 'Photo access is needed to attach a snapshot to this meal.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: false,
-      quality: 1,
-    });
-
-    if (!result.canceled) {
-      setPhotoUri(result.assets[0]?.uri);
-      setPhotoMediaId(undefined);
-    }
+      const permission = await (camera ? requestCameraPermission() : requestPhotosPermission());
+      if (!permission.granted) {
+        notify(permission.message ?? (camera ? 'Camera access is optional. You can choose a photo instead.' : 'Photo access is needed to attach a snapshot to this meal.'));
+        return;
+      }
+      const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], allowsEditing: false, quality: 1 };
+      const result = await (camera ? ImagePicker.launchCameraAsync(options) : ImagePicker.launchImageLibraryAsync(options));
+      if (!result.canceled && result.assets[0]?.uri) {
+        setPhotoUri(result.assets[0].uri);
+        setPhotoMediaId(undefined);
+        setSaveError(undefined);
+      }
     } catch {
       setSaveError('This photo could not be opened. Please choose another photo.');
-    }
+    } finally { pickingPhoto.current = false; }
   };
+  const handlePickPhoto = () => handlePhoto(false);
 
   const handleUseDemoPhoto = (source: ImageSourcePropType) => {
     const uri = resolveDemoImageAssetUri(source);
@@ -421,18 +414,14 @@ export default function AddScreen() {
     }
 
     saveInFlight.current = true;
+    locationRequest.current += 1;
+    setLocating(false);
     setSaving(true);
     setSaveError(undefined);
     try {
       const savedId = editingMeal?.id ?? draftId.current;
       const createdAt = editingMeal?.createdAt ?? new Date().toISOString();
-      const nextLocationDetails = locationDetails
-        ? {
-            ...locationDetails,
-            label: trimmedLocation || locationDetails.label,
-            address: locationDetails.address ?? (trimmedLocation || undefined),
-          }
-        : buildManualMealLocation(trimmedLocation);
+      const nextLocationDetails = resolveMealLocationForSave(trimmedLocation, locationDetails);
       await saveMealMemory({
         id: savedId,
         origin: 'user',
@@ -510,6 +499,15 @@ export default function AddScreen() {
               </View>
             )}
           </Pressable>
+
+          <View style={styles.locationToolsRow}>
+            <Pressable accessibilityRole="button" onPress={() => handlePhoto(true)} style={styles.locationButton}>
+              <Text style={styles.locationButtonText}>{t('Take photo')}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={handlePickPhoto} style={styles.locationButton}>
+              <Text style={styles.locationButtonText}>{t('Photo library')}</Text>
+            </Pressable>
+          </View>
 
             <View style={styles.demoPhotoPicker}>
               <Text style={styles.demoPhotoKicker}>{t('Or choose a sample photo')}</Text>
@@ -596,13 +594,7 @@ export default function AddScreen() {
                 accessibilityLabel={t('Location')}
                 style={styles.input}
                 value={location}
-                onChangeText={(value) => {
-                  setLocation(value);
-                  if (!value.trim()) {
-                    setLocationDetails(undefined);
-                    setLocationStatus(undefined);
-                  }
-                }}
+                onChangeText={editPlace}
                 placeholder={t("Little Ruby's SoHo, kitchen table...")}
                 placeholderTextColor="rgba(141, 123, 102, 0.52)"
               />
@@ -617,6 +609,9 @@ export default function AddScreen() {
                     {t(locating ? 'Finding place...' : 'Use current location')}
                   </Text>
                 </Pressable>
+                {Boolean(location || locationDetails || locating) && <Pressable accessibilityRole="button" onPress={() => editPlace('')} style={styles.locationButton}>
+                  <Text style={styles.locationButtonText}>{t('Remove place')}</Text>
+                </Pressable>}
                 {locationStatus ? <Text style={styles.locationStatus}>{t(locationStatus)}</Text> : null}
               </View>
             </View>

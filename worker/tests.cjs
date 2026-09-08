@@ -20,8 +20,12 @@ const { initializeQuota, reserveQuota, IP_WINDOW_MS } = require('./quota.ts');
 const memory = new Map();
 const storage = { getItem: async (key) => memory.get(key) ?? null, setItem: async (key, value) => { memory.set(key, value); }, removeItem: async (key) => { memory.delete(key); } };
 const load = Module._load;
-Module._load = function (id, ...args) { return id === '@react-native-async-storage/async-storage' ? { default: storage } : load.call(this, id, ...args); };
+Module._load = function (id, ...args) {
+  if (id === 'expo-location') return {};
+  return id === '@react-native-async-storage/async-storage' ? { default: storage } : load.call(this, id, ...args);
+};
 const client = require('../src/insights/monthlyReport.ts');
+const { resolveMealLocationForSave } = require('../src/services/mealMetadata.ts');
 Module._load = load;
 
 const meal = { id: 'meal-1', date: '2026-09-02', title: 'Lunch with soup', mealType: 'lunch', moodTags: ['peaceful'], companyTags: ['just-me'], note: 'A quiet lunch.', hasPhoto: true };
@@ -45,6 +49,14 @@ function openQuota(filename) {
 }
 
 async function main() {
+  const gps = { source: 'gps', label: 'Old place', address: 'Old address', latitude: 34, longitude: -118 };
+  assert.equal(resolveMealLocationForSave(' Old place ', gps), gps);
+  assert.equal(resolveMealLocationForSave('', gps), undefined);
+  const editedPlace = resolveMealLocationForSave('New place', gps);
+  assert.equal(editedPlace.source, 'manual');
+  assert.equal(editedPlace.address, 'New place');
+  assert.equal(editedPlace.latitude, undefined);
+  assert.equal(editedPlace.longitude, undefined);
   const normalized = validateInput(input);
   assert.equal(calculateMetrics(normalized.meals).daysLogged, 2);
   assert.equal(calculateMetrics(normalized.meals).byType.lunch, 2);
@@ -66,6 +78,10 @@ async function main() {
   const prompt = buildPrompt(richInput, calculateMetrics(richInput.meals));
   assert.ok(new TextEncoder().encode(prompt.messages.map((message) => message.content).join('')).byteLength <= MAX_PROMPT_BYTES);
   assert.ok(prompt.evidenceMealIds.length > 0 && prompt.evidenceMealIds.length <= 12);
+  assert.match(prompt.messages[0].content, /不是诊断/);
+  assert.match(prompt.messages[0].content, /不劝人积极/);
+  assert.match(prompt.messages[0].content, /没有笔记时/);
+  assert.ok(!prompt.messages[1].content.includes('hasPhoto'), 'AI receives no image-content hint');
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mealog-quota-'));
   try {
@@ -99,7 +115,11 @@ async function main() {
   const report = await success.json();
   assert.equal(report.provider, PROVIDER);
   assert.equal(report.model, MODEL);
+  assert.equal(report.contentVersion, 2);
   validateReport(report, normalized);
+  const { contentVersion, ...legacyReport } = report;
+  assert.equal(validateReport(legacyReport, normalized).contentVersion, undefined, 'Old reports stay readable');
+  assert.throws(() => validateReport({ ...report, contentVersion: 999 }, normalized));
   assert.equal(success.headers.get('Cache-Control'), 'no-store');
   for (const [req, status] of [
     [new Request('https://mealog.example/api/insights/monthly'), 405],
@@ -131,6 +151,20 @@ async function main() {
     return { response: narrative };
   } });
   assert.equal(structured.status, 200, 'JSON Mode object output is accepted and validated');
+  const oneMeal = await handleMonthly(request({ ...input, meals: [meal] }), { ...services, generate: async () => ({
+    response: { ...narrative, observations: [narrative.observations[0], narrative.observations[0]] },
+  }) });
+  assert.equal((await oneMeal.json()).narrative.observations.length, 1, 'One meal never becomes three repetitive paragraphs');
+  const retelling = await handleMonthly(request({ ...input, locale: 'zh', meals: [meal] }), { ...services, generate: async () => ({
+    response: { title: '一起吃饭', observations: [{ text: '我们一起笑了。', mealIds: ['meal-1'] }] },
+  }) });
+  assert.equal((await retelling.json()).narrative.observations[0].text, '你们一起笑了。', 'Narrator is not a participant');
+  const liveLanguageRegression = await handleMonthly(request({ ...input, locale: 'zh', meals: [meal] }), { ...services, generate: async () => ({
+    response: { title: 'Dumplings folded with Amy', observations: [{ text: '我们一起折叠饺子，Amy做了一个小型星形饺子，你们一起笑了', mealIds: ['meal-1'] }] },
+  }) });
+  const polished = (await liveLanguageRegression.json()).narrative;
+  assert.equal(polished.title, '餐桌上的片刻');
+  assert.equal(polished.observations[0].text, '你们一起包饺子，Amy做了一个星形小饺子，你们一起笑了。');
   const realTimer = global.setTimeout;
   let aborted = false;
   try {
@@ -150,6 +184,10 @@ async function main() {
   assert.ok(!client.inputSnapshot(clientInput).includes('PRIVATE'));
   assert.ok(!client.inputSnapshot(clientInput).includes('latitude'));
   assert.equal(client.inputSnapshot(clientInput), client.inputSnapshot(client.makeMonthlyInput([...localMeals].reverse(), input.month, input.locale)));
+  assert.ok(client.makeMonthlyInput(localMeals, input.month, input.locale, false).meals.every((row) => row.note === ''));
+  const mixedMeals = [{ ...localMeals[0], origin: 'sample' }, { ...localMeals[1], origin: 'user' }, { ...localMeals[1], id: 'legacy' }];
+  assert.deepEqual(client.mealsForScope(mixedMeals, 'personal').map((row) => row.id), ['meal-2', 'legacy']);
+  assert.deepEqual(client.mealsForScope(mixedMeals, 'sample').map((row) => row.id), ['meal-1']);
   const entry = { snapshot: client.inputSnapshot(clientInput), report };
   await client.saveReportCache(entry);
   assert.equal((await client.readReportCache()).length, 1);
@@ -159,6 +197,11 @@ async function main() {
   assert.equal(client.selectCachedReport([entry], { ...clientInput, month: '2026-08' }), undefined);
   assert.deepEqual(client.parseCache('{bad'), []);
   assert.deepEqual(client.parseCache(JSON.stringify([{ ...entry, report: { ...report, provider: 'fake' } }])), []);
+  assert.equal(client.selectCachedReport([entry], clientInput, 'personal'), undefined, 'Unscoped legacy reports cannot masquerade as personal insights');
+  const sampleEntry = { ...entry, scope: 'sample' };
+  await client.saveReportCache(sampleEntry);
+  assert.equal(client.selectCachedReport(await client.readReportCache(), clientInput, 'sample').scope, 'sample');
+  assert.equal(client.selectCachedReport([sampleEntry], edited, 'personal'), undefined, 'No cross-scope stale report fallback');
   const fetchOriginal = global.fetch;
   try {
     let calls = 0;

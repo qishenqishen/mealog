@@ -1,6 +1,10 @@
 import { useI18n } from './index';
 
 const ZH: Record<string, string> = {
+  "Take photo": "拍张照片",
+  "Photo library": "从相册选择",
+  "Remove place": "移除地点",
+  "Camera access is optional. You can choose a photo instead.": "相机权限是可选的，也可以从相册选择照片。",
   "Breakfast": "早餐",
   "Lunch": "午餐",
   "Dinner": "晚餐",
@@ -65,7 +69,6 @@ const ZH: Record<string, string> = {
   "This meal memory could not be opened for editing.": "无法打开这份记忆，请返回后重试。",
   "People could not be loaded. Please try again.": "暂时无法读取人物，请重试。",
   "Current place saved with this memory.": "这份记忆已保存地点。",
-  "Current place added quietly because location was already allowed.": "已根据你此前允许的位置权限添加地点。",
   "Current place added. You can still edit the text.": "已添加当前位置，你仍然可以编辑地点名称。",
   "Location is optional. You can still type a place by hand.": "位置权限是可选的，也可以手动填写地点。",
   "Mealog could not read your current place. You can still type it by hand.": "暂时无法获取当前位置，你仍然可以手动填写。",

@@ -1,14 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 
-import { getMealCompanions, getMeals, getPeopleProfiles } from '../../src/storage';
+import { getMealCompanions, getMeals, getPeopleProfiles, getMonthlyReflections, saveMonthlyReflection } from '../../src/storage';
 import { useI18n } from '../../src/i18n';
-import { calculateMetrics, InsightError, type ReportLocale } from '../../src/insights/contract';
+import { calculateMetrics, CONTENT_VERSION, InsightError, type ReportLocale } from '../../src/insights/contract';
 import {
   checkInput, generateMonthlyReport, inputSnapshot, makeMonthlyInput, readReportCache,
-  saveReportCache, selectCachedReport, type CachedReport,
+  saveReportCache, selectCachedReport, mealsForScope, type CachedReport, type ReportScope,
 } from '../../src/insights/monthlyReport';
 import type { MealCompanion, MealEntry, PersonProfile } from '../../src/types';
 import { colors } from '../../src/theme';
@@ -52,6 +52,16 @@ export default function InsightsScreen() {
   const [companions, setCompanions] = useState<MealCompanion[]>([]);
   const [people, setPeople] = useState<PersonProfile[]>([]);
   const [cache, setCache] = useState<CachedReport[]>([]);
+  const [scope, setScope] = useState<ReportScope>();
+  const activeScope = scope ?? 'personal';
+  const [includeNotes, setIncludeNotes] = useState(false);
+  const [ownNotes, setOwnNotes] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [noteStatus, setNoteStatus] = useState<{ key: string; error: boolean }>();
+  const [savingNote, setSavingNote] = useState(false);
+  const savingNoteRef = useRef(false);
+  const [noteLoadError, setNoteLoadError] = useState(false);
+  const [notesLoaded, setNotesLoaded] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [pending, setPending] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -63,16 +73,26 @@ export default function InsightsScreen() {
     setLoaded(false);
     setLoadError(false);
     Promise.all([getMeals(), readReportCache().catch(() => []), getMealCompanions(), getPeopleProfiles()]).then(([allMeals, reports, allCompanions, allPeople]) => {
-      if (active) { setMeals(allMeals); setCache(reports); setCompanions(allCompanions); setPeople(allPeople); setLoaded(true); }
+      if (active) {
+        setMeals(allMeals); setCache(reports); setCompanions(allCompanions); setPeople(allPeople); setLoaded(true);
+        setScope((previous) => previous ?? (allMeals.some((meal) => meal.origin !== 'sample') ? 'personal' : 'sample'));
+      }
     }).catch(() => { if (active) setLoadError(true); });
+    setNoteLoadError(false);
+    setNotesLoaded(false);
+    getMonthlyReflections().then((notes) => {
+      if (active) { setOwnNotes(Object.fromEntries(notes.map((note) => [`${note.scope}:${note.month}`, note.text]))); setNotesLoaded(true); }
+    }).catch(() => { if (active) setNoteLoadError(true); });
     return () => { active = false; };
   }, []));
 
-  const input = useMemo(() => makeMonthlyInput(meals, month, locale), [meals, month, locale]);
+  const scopedMeals = useMemo(() => mealsForScope(meals, activeScope), [meals, activeScope]);
+  const fullInput = useMemo(() => makeMonthlyInput(scopedMeals, month, locale), [scopedMeals, month, locale]);
+  const input = useMemo(() => makeMonthlyInput(scopedMeals, month, locale, includeNotes), [scopedMeals, month, locale, includeNotes]);
   const snapshot = inputSnapshot(input);
-  const cached = selectCachedReport(cache, input);
-  const stale = Boolean(cached && cached.snapshot !== snapshot);
-  const metrics = cached && !stale ? cached.report.metrics : calculateMetrics(input.meals);
+  const cached = selectCachedReport(cache, input, activeScope);
+  const stale = Boolean(cached && (cached.snapshot !== snapshot || cached.report.contentVersion !== CONTENT_VERSION));
+  const metrics = calculateMetrics(fullInput.meals);
   const inputError = useMemo(() => {
     try { checkInput(input); return undefined; }
     catch (error) { return error instanceof InsightError ? error.code : 'invalid_input'; }
@@ -80,7 +100,22 @@ export default function InsightsScreen() {
   const monthLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', { month: 'long', year: 'numeric' });
   const report = cached?.report;
   const displayedNotice = notice?.snapshot === snapshot ? notice : undefined;
-  const mealById = new Map(meals.map((meal) => [meal.id, meal]));
+  const mealById = new Map(scopedMeals.map((meal) => [meal.id, meal]));
+  const noteKey = `${activeScope}:${month}`;
+  const ownNote = drafts[noteKey] ?? ownNotes[noteKey] ?? '';
+  const noteDirty = ownNote.trim() !== (ownNotes[noteKey] ?? '');
+
+  async function saveOwnNote() {
+    if (savingNoteRef.current || noteLoadError || !notesLoaded) return;
+    savingNoteRef.current = true;
+    setSavingNote(true);
+    try {
+      await saveMonthlyReflection(month, activeScope, ownNote);
+      setOwnNotes((previous) => ({ ...previous, [noteKey]: ownNote.trim() }));
+      setNoteStatus({ key: noteKey, error: false });
+    } catch { setNoteStatus({ key: noteKey, error: true }); }
+    finally { savingNoteRef.current = false; setSavingNote(false); }
+  }
   const peopleOverview = useMemo(() => {
     const ids = new Set(input.meals.map((meal) => meal.id));
     return people.map((person) => ({
@@ -94,8 +129,8 @@ export default function InsightsScreen() {
     setPending(true);
     setNotice(undefined);
     try {
-      const next = { snapshot, report: await generateMonthlyReport(input) };
-      setCache((previous) => [next, ...previous.filter((item) => item.snapshot !== snapshot)].slice(0, 12));
+      const next = { snapshot, scope: activeScope, report: await generateMonthlyReport(input) };
+      setCache((previous) => [next, ...previous.filter((item) => item.snapshot !== snapshot || item.scope !== activeScope)].slice(0, 12));
       try { await saveReportCache(next); }
       catch { setNotice({ snapshot, code: 'cache_error' }); }
     } catch (error) {
@@ -113,7 +148,7 @@ export default function InsightsScreen() {
   };
   const moodLabels: Record<string, string> = {
     peaceful: copy('Peaceful', '平静'), everyday: copy('Everyday', '日常'), nostalgic: copy('Nostalgic', '怀念'),
-    healing: copy('Healing', '治愈'), heartfelt: copy('Heartfelt', '暖心'), overwhelming: copy('Overwhelming', '不堪重负'), celebratory: copy('Celebratory', '庆祝'),
+    healing: copy('Healing', '治愈'), heartfelt: copy('Heartfelt', '温暖'), overwhelming: copy('Overwhelming', '有些疲惫'), celebratory: copy('Celebratory', '庆祝'),
   };
   const companyLabels: Record<string, string> = {
     'just-me': copy('Just me', '独自用餐'), 'family-table': copy('Family table', '家人相聚'),
@@ -139,6 +174,7 @@ export default function InsightsScreen() {
             <View style={styles.languages} accessibilityRole="tablist">
               {(['en', 'zh'] as const).map((language) => (
                 <Pressable key={language} accessibilityRole="tab" accessibilityState={{ selected: locale === language, disabled: pending }}
+                  aria-selected={locale === language}
                   disabled={pending} onPress={() => setLocale(language)} style={[styles.language, locale === language && styles.selectedLanguage]}>
                   <Text style={styles.small}>{language === 'en' ? 'English' : '中文'}</Text>
                 </Pressable>
@@ -163,25 +199,46 @@ export default function InsightsScreen() {
           </Pressable>}
           <Image source={getHeroAssetForMonth(Number(month.slice(5)) - 1)} style={styles.artwork} resizeMode="cover" accessibilityIgnoresInvertColors />
 
+          <View style={styles.scopes} accessibilityRole="tablist">
+            {(['personal', 'sample'] as const).map((value) => <Pressable key={value} accessibilityRole="tab"
+              aria-selected={activeScope === value}
+              accessibilityState={{ selected: activeScope === value, disabled: pending }} disabled={pending}
+              onPress={() => { setScope(value); setIncludeNotes(false); setNotice(undefined); }}
+              style={[styles.scope, activeScope === value && styles.selectedLanguage]}>
+              <Text style={styles.body}>{value === 'personal' ? copy('My table', '我的餐桌') : copy('Sample table', '示例餐桌')}</Text>
+            </Pressable>)}
+          </View>
+          <Text style={styles.caption}>{activeScope === 'sample'
+            ? copy('Sample memories, separate from your own meals.', '这里是示例记忆，不代表你的个人生活。')
+            : copy('Only your meals, including sample memories you have edited.', '只回顾你的记录，也包括你亲自修改过的示例。')}</Text>
+
           {loadError ? <Text accessibilityRole="alert" style={styles.error}>{errorCopy('storage_error', locale)}</Text> : !loaded ?
             <ActivityIndicator style={styles.loader} accessibilityLabel={copy('Loading meals', '正在加载用餐记录')} color={colors.primary} /> : <>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>{copy('Your month in meals', '本月用餐记录')}</Text>
+              <Text style={styles.sectionTitle}>{activeScope === 'sample' ? copy('A sample month in meals', '本月示例记录') : copy('Your month in meals', '本月用餐记录')}</Text>
               <View style={styles.metrics}>
                 {[
                   [metrics.mealCount, copy('Meals', '用餐')], [metrics.daysLogged, copy('Days logged', '记录天数')],
                   [metrics.photoCount, copy('With photos', '附有照片')], [metrics.noteCount, copy('With notes', '附有笔记')],
                 ].map(([count, label]) => <View key={label} style={styles.metric}><Text style={styles.count}>{count}</Text><Text style={styles.small}>{label}</Text></View>)}
               </View>
-              <Text style={styles.caption}>{cached && !stale ? copy('Calculated from the meals in this report.', '根据本报告中的用餐记录计算。') : copy('Calculated from your current saved meals on this device.', '根据此设备当前保存的用餐记录计算。')}</Text>
+              <Text style={styles.caption}>{copy('From the meals saved in this table. Not a score or a goal.', '根据这张餐桌里保存的记录统计，不是评分，也不是目标。')}</Text>
             </View>
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{copy('A reflection from your table', '来自餐桌的月度回顾')}</Text>
               <Text style={styles.disclosure}>{copy(
-                'Generating sends your meal text, notes and tags to Cloudflare AI. Photos, GPS coordinates and contact profiles stay on this device.',
-                '生成时会将用餐文字、笔记和标签发送给 Cloudflare AI。照片、GPS 坐标和联系人资料会留在此设备上。',
+                'Optional. Generating sends this month\'s meal titles, dates and tags to Cloudflare AI. Photos, GPS coordinates and person profiles are not sent.',
+                '这是一项可选回顾。点击生成会把本月餐食名称、日期和标签发送给 Cloudflare AI，不发送照片、GPS 坐标或人物资料。',
               )}</Text>
+              <View style={styles.noteOption}>
+                <Text style={[styles.body, { flex: 1 }]}>{copy('Include meal notes', '包含餐食小记')}</Text>
+                <Switch accessibilityLabel={copy('Include meal notes', '包含餐食小记')} value={includeNotes} disabled={pending}
+                  onValueChange={setIncludeNotes} trackColor={{ true: '#8EA497' }} />
+              </View>
+              <Text style={styles.caption}>{includeNotes
+                ? copy('Up to 240 characters per note, including any names or places you wrote, will also be sent.', '每条小记最多发送前 240 个字符，其中你写下的姓名或地点也会一并发送。')
+                : copy('Your meal notes stay private. The reflection will be simpler.', '餐食小记不发送，回顾会简短一些。')}</Text>
               <Pressable accessibilityRole="button" disabled={pending || !input.meals.length || Boolean(inputError) || Platform.OS !== 'web'}
                 accessibilityState={{ disabled: pending || !input.meals.length || Boolean(inputError) || Platform.OS !== 'web', busy: pending }}
                 onPress={generate} style={[styles.generate, (pending || !input.meals.length || Boolean(inputError) || Platform.OS !== 'web') && styles.disabled]}>
@@ -189,13 +246,18 @@ export default function InsightsScreen() {
                 <Text style={styles.generateLabel}>{pending ? copy('Generating...', '正在生成…') : report ? copy('Generate again', '重新生成') : copy('Generate reflection', '生成月度回顾')}</Text>
               </Pressable>
               {Platform.OS !== 'web' && <Text style={styles.caption}>{copy('AI generation is available in the hosted web app.', 'AI 生成可在网页版中使用。')}</Text>}
-              {!input.meals.length && <Text style={styles.body}>{copy('No meals saved for this month.', '本月还没有保存用餐记录。')}</Text>}
+              {!input.meals.length && <View><Text style={styles.body}>{copy('No meals saved for this month.', '本月还没有保存用餐记录。')}</Text>
+                {activeScope === 'personal' && <Pressable accessibilityRole="link" onPress={() => router.push('/add')} style={styles.reference}>
+                  <Text style={styles.link}>{copy('Record a meal', '记下一餐')}</Text>
+                </Pressable>}
+              </View>}
               {inputError && <Text accessibilityRole="alert" style={styles.error}>{errorCopy(inputError, locale)}</Text>}
               {displayedNotice && <View accessibilityRole="alert"><Text style={styles.error}>{errorCopy(displayedNotice.code, locale)}</Text>
                 {displayedNotice.retryAfter && <Text style={styles.caption}>{copy(`Retry after at least ${Math.ceil(displayedNotice.retryAfter / 60)} minutes.`, `请至少等待 ${Math.ceil(displayedNotice.retryAfter / 60)} 分钟后重试。`)}</Text>}
               </View>}
               {report && <View style={styles.report}>
-                {stale && <Text style={styles.stale}>{copy('Saved report is out of date. Meal details have changed.', '已保存的报告已过期，用餐记录发生了变化。')}</Text>}
+                {activeScope === 'sample' && <Text style={styles.caption}>{copy('Sample AI reflection', '示例餐桌的 AI 回顾')}</Text>}
+                {stale && <Text style={styles.stale}>{copy('This is a saved reflection. Records, sharing choices or the reflection style have changed; generate again to update it.', '这是之前保存的回顾。记录、分享选项或回顾版本已变化，可重新生成更新。')}</Text>}
                 <Text style={styles.reportTitle}>{report.narrative.title}</Text>
                 {report.narrative.observations.map((observation, index) => <View key={index} style={styles.observation}>
                   <Text selectable style={styles.reportText}>{observation.text}</Text>
@@ -210,6 +272,23 @@ export default function InsightsScreen() {
                 <Text style={styles.caption}>{new Date(report.generatedAt).toLocaleString(locale === 'zh' ? 'zh-CN' : 'en-US')}</Text>
                 <Text style={styles.caption}>{copy('Based on a sample of saved meals. AI interpretations may be mistaken.', '基于部分已保存的用餐记录，AI 解读可能有误。')}</Text>
               </View>}
+            </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{copy('In your own words', '也听听你自己的话')}</Text>
+              <TextInput accessibilityLabel={copy('Your monthly reflection', '我的月度感想')} style={styles.ownNote}
+                value={ownNote} multiline maxLength={1200} textAlignVertical="top" editable={!noteLoadError && notesLoaded}
+                placeholder={copy('What would you like to remember from these meals?', '这些餐桌时光里，你最想留下什么？')}
+                placeholderTextColor={colors.mutedText}
+                onChangeText={(text) => { setDrafts((previous) => ({ ...previous, [noteKey]: text })); setNoteStatus(undefined); }} />
+              <Text style={styles.caption}>{copy('Optional. Saved only on this device, never sent to AI.', '可以留白。只保存在此设备上，绝不发送给 AI。')}</Text>
+              <Pressable accessibilityRole="button" disabled={savingNote || noteLoadError || !notesLoaded || !noteDirty} onPress={saveOwnNote}
+                style={[styles.generate, (savingNote || noteLoadError || !notesLoaded || !noteDirty) && styles.disabled]}>
+                <Text style={styles.generateLabel}>{savingNote ? copy('Saving...', '正在保存…') : copy('Save my words', '保存我的感想')}</Text>
+              </Pressable>
+              {noteLoadError && <Text accessibilityRole="alert" style={styles.error}>{copy('Your words could not be read. Reopen Insights to retry; nothing has been overwritten.', '暂时无法读取感想，请重新打开此页重试。原有内容未被覆盖。')}</Text>}
+              {noteStatus?.key === noteKey && (noteStatus.error || !noteDirty) && <Text accessibilityRole={noteStatus.error ? 'alert' : undefined} style={noteStatus.error ? styles.error : styles.caption}>{noteStatus.error
+                ? copy('Could not save. Your draft is kept here; please retry.', '暂时无法保存，草稿仍在，请重试。')
+                : copy('Saved on this device.', '已保存在此设备上。')}</Text>}
             </View>
             {input.meals.length > 0 && <>
               <View style={styles.section}>
@@ -242,6 +321,10 @@ const styles = StyleSheet.create({
   languages: { flexDirection: 'row', padding: 3, backgroundColor: colors.accentSoft, borderRadius: 8 },
   language: { paddingHorizontal: 12, minHeight: 38, justifyContent: 'center', borderRadius: 6 },
   selectedLanguage: { backgroundColor: colors.surface },
+  scopes: { flexDirection: 'row', padding: 4, marginTop: 12, backgroundColor: colors.accentSoft, borderRadius: 8 },
+  scope: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
+  noteOption: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 },
+  ownNote: { minHeight: 124, fontSize: 16, lineHeight: 25, color: colors.text, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 8 },
   monthRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 16, gap: 8 },
   month: { flex: 1, flexShrink: 1, textAlign: 'center', color: colors.primary, fontSize: 27, lineHeight: 36 },
   arrowButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },

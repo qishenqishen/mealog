@@ -6,20 +6,25 @@ import {
 } from './contract';
 
 export const INSIGHTS_CACHE_KEY = '@mealogue/insightsCache/v1';
-export interface CachedReport { snapshot: string; report: MonthlyReport }
+export type ReportScope = 'personal' | 'sample';
+export interface CachedReport { snapshot: string; report: MonthlyReport; scope?: ReportScope }
+
+export function mealsForScope(meals: MealEntry[], scope: ReportScope): MealEntry[] {
+  return meals.filter((meal) => scope === 'sample' ? meal.origin === 'sample' : meal.origin !== 'sample');
+}
 
 function clip(value: string | undefined, max: number) {
   return (value ?? '').trim().slice(0, max).replace(/[\uD800-\uDBFF]$/, '');
 }
 
-export function makeMonthlyInput(meals: MealEntry[], month: string, locale: ReportLocale): MonthlyInput {
+export function makeMonthlyInput(meals: MealEntry[], month: string, locale: ReportLocale, includeNotes = true): MonthlyInput {
   return {
     version: 1, month, locale,
     meals: meals.filter((meal) => meal.date.slice(0, 7) === month).map((meal) => ({
       id: meal.id, date: meal.date, title: clip(meal.title, 80), mealType: meal.mealType,
       moodTags: [...new Set((meal.moodTags.length ? meal.moodTags : meal.moodTag ? [meal.moodTag] : []).filter((tag) => MOODS.includes(tag)))].sort(),
       companyTags: [...new Set(meal.peopleTags.filter((tag) => COMPANY.includes(tag)))].sort(),
-      note: clip(meal.note, 240), hasPhoto: Boolean(meal.photoMediaId || meal.photoUri),
+      note: includeNotes ? clip(meal.note, 240) : '', hasPhoto: Boolean(meal.photoMediaId || meal.photoUri),
     })).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)),
   };
 }
@@ -44,7 +49,8 @@ export function parseCache(raw: string | null): CachedReport[] {
         const entry = object(value);
         if (typeof entry.snapshot !== 'string' || entry.snapshot.length > MAX_BODY_BYTES) return [];
         const input = validateInput(JSON.parse(entry.snapshot));
-        return [{ snapshot: inputSnapshot(input), report: validateReport(entry.report, input) }];
+        if (entry.scope !== undefined && entry.scope !== 'personal' && entry.scope !== 'sample') return [];
+        return [{ snapshot: inputSnapshot(input), report: validateReport(entry.report, input), scope: entry.scope }];
       } catch { return []; }
     });
   } catch { return []; }
@@ -54,15 +60,15 @@ export async function readReportCache() {
   return parseCache(await AsyncStorage.getItem(INSIGHTS_CACHE_KEY));
 }
 
-export function selectCachedReport(cache: CachedReport[], input: MonthlyInput): CachedReport | undefined {
+export function selectCachedReport(cache: CachedReport[], input: MonthlyInput, scope?: ReportScope): CachedReport | undefined {
   const snapshot = inputSnapshot(input);
-  const matching = cache.filter((entry) => entry.report.month === input.month && entry.report.locale === input.locale);
+  const matching = cache.filter((entry) => entry.scope === scope && entry.report.month === input.month && entry.report.locale === input.locale);
   return matching.find((entry) => entry.snapshot === snapshot) ?? matching[0];
 }
 
 export async function saveReportCache(entry: CachedReport) {
   const current = await readReportCache();
-  await AsyncStorage.setItem(INSIGHTS_CACHE_KEY, JSON.stringify([entry, ...current.filter((item) => item.snapshot !== entry.snapshot)].slice(0, 12)));
+  await AsyncStorage.setItem(INSIGHTS_CACHE_KEY, JSON.stringify([entry, ...current.filter((item) => item.snapshot !== entry.snapshot || item.scope !== entry.scope)].slice(0, 12)));
 }
 
 export async function clearInsightsCache() {

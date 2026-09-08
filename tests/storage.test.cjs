@@ -539,10 +539,35 @@ test('clearAll removes Insights cache and meal data while preserving the standal
   r.store(cacheKey, [{ snapshot: 'saved report input', report: { month: '2026-09' } }]);
   r.store(r.api.KEYS.meals, [meal('user', { origin: 'user' })]);
   r.values.set(markerKey, '{"complete":true}');
+  await r.api.saveMonthlyReflection('2026-09', 'personal', 'My private words');
   await r.api.clearAll();
   assert.equal(r.values.has(cacheKey), false);
   assert.equal(r.values.has(r.api.KEYS.meals), false);
   assert.equal(r.values.get(markerKey), '{"complete":true}');
+  assert.equal(r.values.has(r.api.KEYS.monthlyReflections), false);
+});
+
+test('monthly reflections isolate month/scope, survive reads and retry safely after failed writes', async () => {
+  const r = runtime();
+  await Promise.all([
+    r.api.saveMonthlyReflection('2026-09', 'personal', ' My words '),
+    r.api.saveMonthlyReflection('2026-09', 'sample', 'Sample thoughts'),
+    r.api.saveMonthlyReflection('2026-08', 'personal', 'Last month'),
+  ]);
+  assert.equal((await r.api.getMonthlyReflections()).length, 3);
+  r.fail('set', r.api.KEYS.monthlyReflections, { after: true });
+  await assert.rejects(r.api.saveMonthlyReflection('2026-09', 'personal', 'Changed'), /write failure/);
+  assert.equal((await r.api.getMonthlyReflections()).find((row) => row.scope === 'personal' && row.month === '2026-09').text, 'My words');
+  await r.api.saveMonthlyReflection('2026-09', 'personal', 'Changed');
+  await r.api.saveMonthlyReflection('2026-09', 'sample', '');
+  assert.equal((await r.api.getMonthlyReflections()).length, 2);
+  assert.equal(r.values.has(r.api.KEYS.insightsCache), false, 'Own words are never written to AI cache');
+  await assert.rejects(r.api.saveMonthlyReflection('2026-13', 'personal', 'bad'));
+  await assert.rejects(r.api.saveMonthlyReflection('2026-09', 'personal', 'a'.repeat(1201)));
+  r.store(r.api.KEYS.monthlyReflections, [{ month: '2026-09', scope: 'personal', text: { broken: true } }]);
+  const corrupt = r.values.get(r.api.KEYS.monthlyReflections);
+  await assert.rejects(r.api.saveMonthlyReflection('2026-09', 'personal', 'Do not overwrite'), /could not be read/);
+  assert.equal(r.values.get(r.api.KEYS.monthlyReflections), corrupt);
 });
 
 test('native import preserves original bytes, bounds portrait/landscape thumbnails and rejects bad files', async () => {

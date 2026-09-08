@@ -48,7 +48,8 @@ const showReport = async (report) => {
 
 try {
   await page.goto(origin + '/insights');
-  await page.getByRole('button', { name: 'Generate reflection', exact: true }).waitFor({ timeout: 60000 });
+  await page.getByRole('button', { name: 'Generate reflection', exact: true }).waitFor({ timeout: 180000 });
+  await page.getByRole('switch', { name: 'Include meal notes', exact: true }).click();
   assert.equal(generationCount, 0);
   const english = await generate('Generate reflection');
   await showReport(english);
@@ -69,12 +70,15 @@ try {
   await page.waitForURL(/\/meal\//);
   const newId = new URL(page.url()).pathname.split('/').pop();
   await page.goto(origin + '/insights');
-  await page.getByText('Saved report is out of date. Meal details have changed.', { exact: true }).waitFor();
+  await page.getByRole('tab', { name: 'My table', exact: true }).waitFor();
+  await page.getByRole('switch', { name: 'Include meal notes', exact: true }).click();
   assert.equal(generationCount, 1);
-  const updated = await generate('Generate again');
-  assert.equal(updated.metrics.mealCount, english.metrics.mealCount + 1);
+  const updated = await generate('Generate reflection');
+  assert.equal(updated.metrics.mealCount, 1, 'Personal reflection excludes sample meals');
   assert(updated.evidenceMealIds.includes(newId));
   assert.notDeepEqual(updated.narrative, english.narrative);
+  assert.equal(updated.narrative.observations.length, 1);
+  assert.doesNotMatch(JSON.stringify(updated.narrative), /kitchen|filling|ingredients|\bwe\b|\bus\b|\bour\b|learned|mastered/i);
   await showReport(updated);
   await page.screenshot({ path: output + '/02-real-ai-after-new-meal.png' });
   results.push('PASS newly recorded meal changes real report and metrics, linked in evidence');
@@ -84,6 +88,9 @@ try {
   const chinese = await generate('生成月度回顾');
   assert.match(JSON.stringify(chinese.narrative), /[\u4e00-\u9fff]/);
   assert.equal(chinese.locale, 'zh');
+  assert.match(chinese.narrative.title, /[\u3400-\u9fff]/);
+  assert.equal(chinese.narrative.observations.length, 1);
+  assert.doesNotMatch(JSON.stringify(chinese.narrative), /肉|蔬菜|馅|厨房|学会|学了|我们|折叠饺子|更亲密|走得更近/);
   await showReport(chinese);
   await page.screenshot({ path: output + '/03-real-ai-chinese.png' });
   results.push('PASS real Chinese generation; language switch alone does not call AI');

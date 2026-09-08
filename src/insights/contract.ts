@@ -2,6 +2,7 @@ import type { MealType, MoodTag } from '../types';
 
 export const MODEL = '@cf/meta/llama-3.1-8b-instruct-fast' as const;
 export const PROVIDER = 'cloudflare_workers_ai' as const;
+export const CONTENT_VERSION = 2;
 export const MAX_BODY_BYTES = 65_536;
 export const MAX_MEALS = 200;
 export const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'treat'];
@@ -44,6 +45,7 @@ export interface Narrative {
 
 export interface MonthlyReport {
   version: 1;
+  contentVersion?: number;
   month: string;
   locale: ReportLocale;
   provider: typeof PROVIDER;
@@ -149,7 +151,9 @@ export function validateNarrative(value: unknown, allowedIds: string[]): Narrati
 
 export function validateReport(value: unknown, input: MonthlyInput): MonthlyReport {
   const report = object(value);
-  keys(report, ['version', 'month', 'locale', 'provider', 'model', 'generatedAt', 'metrics', 'narrative', 'evidenceMealIds']);
+  keys(report, ['version', 'month', 'locale', 'provider', 'model', 'generatedAt', 'metrics', 'narrative', 'evidenceMealIds',
+    ...('contentVersion' in report ? ['contentVersion'] : [])]);
+  if ('contentVersion' in report && report.contentVersion !== CONTENT_VERSION) throw new InsightError('invalid_output', 502);
   const ids = input.meals.map((meal) => meal.id);
   if (report.version !== 1 || report.month !== input.month || report.locale !== input.locale ||
       report.provider !== PROVIDER || report.model !== MODEL || typeof report.generatedAt !== 'string' ||
@@ -161,6 +165,7 @@ export function validateReport(value: unknown, input: MonthlyInput): MonthlyRepo
   }
   return {
     version: 1, month: input.month, locale: input.locale, provider: PROVIDER, model: MODEL,
+    ...(report.contentVersion === CONTENT_VERSION ? { contentVersion: CONTENT_VERSION } : {}),
     generatedAt: report.generatedAt, metrics: calculateMetrics(input.meals),
     narrative: validateNarrative(report.narrative, report.evidenceMealIds), evidenceMealIds: report.evidenceMealIds,
   };

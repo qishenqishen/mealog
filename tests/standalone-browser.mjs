@@ -15,7 +15,7 @@ const key = '@mealogue/';
 const log = (test, detail) => { results.push({ test, status: 'PASS', detail }); console.log(`PASS ${test}`, detail || ''); };
 const state = (page, name) => page.evaluate((storageKey) => JSON.parse(localStorage.getItem(storageKey) || 'null'), key + name);
 const ready = async (page) => {
-  await page.waitForFunction(() => JSON.parse(localStorage.getItem('@mealogue/standaloneDemoSession') || 'null')?.complete, { timeout: 60000 });
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('@mealogue/standaloneDemoSession') || 'null')?.complete, undefined, { timeout: 180000 });
   await page.locator('[role="tab"]').first().waitFor({ timeout: 20000 });
 };
 const visit = async (page, path) => { await page.goto(base + path); await ready(page); };

@@ -8,7 +8,7 @@ const { chromium } = require('playwright');
 require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText, filename);
-const { calculateMetrics, MODEL, PROVIDER } = require('../src/insights/contract.ts');
+const { calculateMetrics, CONTENT_VERSION, MODEL, PROVIDER } = require('../src/insights/contract.ts');
 
 async function main() {
   const root = path.resolve(__dirname, '../dist');
@@ -55,7 +55,7 @@ async function main() {
       const title = input.locale === 'zh' ? '餐桌片刻' : 'A quiet table';
       const text = input.locale === 'zh' ? '你记录了与朋友一起喝汤的午餐。' : 'Your note remembers soup with a friend.';
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
-        version: 1, month: input.month, locale: input.locale, provider: PROVIDER, model: MODEL, generatedAt: new Date().toISOString(), metrics,
+        version: 1, contentVersion: CONTENT_VERSION, month: input.month, locale: input.locale, provider: PROVIDER, model: MODEL, generatedAt: new Date().toISOString(), metrics,
         narrative: { title, observations: [{ text, mealIds: ['qa-meal-1'] }] }, evidenceMealIds: ['qa-meal-1'],
       }) });
     });
@@ -74,11 +74,11 @@ async function main() {
     assert.equal(requests, 1, 'Cached reports load without generation');
     await page.evaluate(() => {
       const meals = JSON.parse(localStorage.getItem('@mealogue/meals'));
-      meals[0].note = 'Updated lunch note.';
+      meals[0].title = 'Updated lunch title';
       localStorage.setItem('@mealogue/meals', JSON.stringify(meals));
     });
     await page.reload();
-    await page.getByText('Saved report is out of date. Meal details have changed.', { exact: true }).waitFor();
+    await page.getByText('This is a saved reflection. Records, sharing choices or the reflection style have changed; generate again to update it.', { exact: true }).waitFor();
     fail = true;
     await page.getByRole('button', { name: 'Generate again', exact: true }).click();
     await page.getByText('AI is unavailable right now. Your saved report and meal counts are still available.', { exact: true }).waitFor();

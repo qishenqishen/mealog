@@ -13,10 +13,10 @@ Open that link on your phone or computer. No account, download, or installation 
 ## A Small Journey
 
 1. Explore the table on Home.
-2. Open Add. Choose a sample food photo or upload your own; add a meal name, mood, note, and a companion.
+2. Open Add. Take a photo, choose from your library, or use a sample food photo; add a meal name, mood, note, and a companion. Location is optional and read only when you ask.
 3. Save and open the meal detail. You can edit the photo or details later.
 4. Revisit it in Archive, the calendar, and month memories. Open a person's page to see your shared meals.
-5. In Insights, select a month and choose **Generate reflection** for a real AI reflection with links back to its meals.
+5. In Insights, choose **My table** or **Sample table** and a month. You can generate an optional AI reflection, open the meals it refers to, and save a monthly thought **in your own words**.
 6. Check Collection as your memories grow, then return to Add.
 
 Use the profile button on Home to switch English/中文 or clear the untouched sample memories. Your additions and edited samples are kept. User-written titles, notes, and names are never automatically translated.
@@ -31,7 +31,9 @@ This is **local managed storage, not cloud photo backup**. Clearing this site's 
 
 ## About AI
 
-Insights uses Cloudflare Workers AI, not a scripted imitation. Generation happens only when you press the button. Selected meal text, notes, and tags are sent for processing; image files, GPS coordinates, and contact profiles are not sent. Text you write may itself contain personal details.
+Insights uses Cloudflare Workers AI, not a scripted imitation. Generation happens only when you press the button. Sample memories and your personal meals are kept separate. Selected meal titles, dates, tags and photo-presence flags are sent for processing; image files, GPS coordinates, and person profiles are not sent. Meal notes are excluded by default. Turn on **Include meal notes** to also send up to 240 characters from each note, including any personal details you have written there.
+
+The **In your own words** monthly reflection is saved only on your device and is never sent to AI. It is optional: the app does not need to decide what a meal meant for you. AI is prompted to remember concrete details, not diagnose feelings, assume a relationship is growing closer, or prescribe a happier outlook.
 
 The app does not store meal text on its server or log request bodies. Reports are cached on your device. AI can make mistakes; check the linked meal evidence. Meal counts and other statistics are calculated from the records, not invented by the model.
 
@@ -80,4 +82,4 @@ Set `MEALOG_URL` to test a deployed build. To use installed Chrome instead of Pl
 
 Built with Expo / React Native Web, TypeScript, IndexedDB, and Cloudflare Workers AI.
 
-See [release and setup notes](docs/BUILD_AND_RELEASE.md), [AI implementation notes](docs/INSIGHTS_AI_REPORT_NOTES.md), and [MVP acceptance results](docs/STANDALONE_MVP_QA.md).
+See [release and setup notes](docs/BUILD_AND_RELEASE.md), [AI implementation notes](docs/INSIGHTS_AI_REPORT_NOTES.md), [original vision / MVP review](docs/PROPOSAL_MVP_REVIEW.md), and [MVP acceptance results](docs/STANDALONE_MVP_QA.md).

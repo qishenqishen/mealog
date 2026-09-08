@@ -11,7 +11,7 @@ The public App and API deploy together. There is no API key in the browser and n
 - No image bytes, image URLs, GPS fields, location fields, or contact profiles. User-written text may itself contain personal details.
 - Browser requests must be same-origin. Unknown API routes return JSON 404, not the App's HTML fallback.
 
-The response includes version, month, locale, provider, model, generation time, deterministic metrics, a short title, one to three observations, and evidence meal IDs. Server and client validate the response. All cited IDs must belong to the supplied evidence.
+The response includes version, contentVersion (currently 2), month, locale, provider, model, generation time, deterministic metrics, a short title, one to three observations, and evidence meal IDs. Server and client validate the response. All cited IDs must belong to the supplied evidence. The client still accepts historical reports without contentVersion, but marks them stale.
 
 Model: `@cf/meta/llama-3.1-8b-instruct-fast`. Provider: `cloudflare_workers_ai`. JSON Mode uses a schema followed by application validation. A prompt of at most 4096 UTF-8 bytes contains a bounded sample of up to 12 meals. Output is limited to 640 tokens. Metrics use every validated meal, not model guesses. English and Chinese instructions require natural language and forbid invented events, locations, or psychological/relationship conclusions. Schema validation cannot guarantee semantic truth; the UI says AI can be mistaken and links to the meals.
 
@@ -27,7 +27,7 @@ The server supplies a 30-second abort signal to AI; the client times out after 4
 
 ## Client integration
 
-`src/insights/monthlyReport.ts` caches up to 12 reports in `@mealogue/insightsCache/v1`, keyed by month, language, and the sanitized input snapshot. Changed inputs mark an old report stale until explicit regeneration. Full data clearing removes this cache. The language provider stores the UI preference; it never rewrites meal titles, notes, or names.
+`src/insights/monthlyReport.ts` caches up to 12 reports in `@mealogue/insightsCache/v1`, keyed by personal/sample scope, month, language, and the sanitized input snapshot. Source filtering occurs locally. No stale fallback crosses scopes, including legacy unscoped reports. Notes are opt-in; changed sharing choices, inputs or content version mark an old report stale until explicit regeneration. Full data clearing removes this cache and the separate private monthly reflections list. The language provider stores the UI preference; it never rewrites meal titles, notes, or names.
 
 `wrangler.jsonc` serves `dist` with SPA fallback and routes `/api` and `/api/*` through the Worker first. App and Worker have separate TypeScript environments. Use Node 22.13 or later; Node 24 is recommended. Regenerate bindings with `npx wrangler types worker/env.d.ts`.
 
@@ -35,6 +35,7 @@ The server supplies a 30-second abort signal to AI; the client times out after 4
 
 - `node worker/tests.cjs`: validation, privacy allowlist, bounded bodies/prompts, SQLite concurrency and reopen persistence, 50/51 cap, UTC reset, provider failures, timeout path, and client cache.
 - `node worker/ui-check.cjs`: mocked browser checks for explicit generation, cached/stale reports, failures, empty months, languages, and reference navigation.
+- `CHROME_CHANNEL=chrome node tests/proposal-browser.mjs`: mocked AI UI plus real browser storage checks for personal/sample isolation, private monthly writing, note opt-in, write failure/retry, camera file capture, managed photos and deliberate location access.
 - `CHROME_CHANNEL=chrome MEALOG_URL=https://mealog.qs2077.workers.dev node tests/live-ai-browser.mjs`: opt-in live test, consuming three AI attempts. Generates English, adds a meal and regenerates, generates Chinese, then deliberately hits the network limit. Closes and reopens Chrome to check persistence.
 - `node worker/smoke.cjs URL`: optional two-call real AI smoke test. Do not run alongside the three-call suite within the same network window.
 

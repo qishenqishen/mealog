@@ -1,7 +1,6 @@
 import * as Location from 'expo-location';
 
 import type { MealLocation } from '../types';
-import { getPermissionStatus } from './permissions';
 
 export function buildMealEatenAt(dateKey: string, timeKey: string): string | undefined {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey) || !/^\d{2}:\d{2}$/.test(timeKey)) {
@@ -58,10 +57,11 @@ export async function getCurrentMealLocation(): Promise<MealLocation> {
   };
 }
 
-export async function getCurrentMealLocationIfAllowed(): Promise<MealLocation | undefined> {
-  const permission = await getPermissionStatus('location');
-  if (!permission.granted) return undefined;
-  return getCurrentMealLocation();
+export function resolveMealLocationForSave(label: string, previous?: MealLocation): MealLocation | undefined {
+  if (!label.trim()) return undefined;
+  // A changed place name must not silently carry coordinates from the old place.
+  if (previous && label.trim() === formatMealLocation(previous)) return previous;
+  return buildManualMealLocation(label);
 }
 
 export function buildManualMealLocation(label: string): MealLocation | undefined {

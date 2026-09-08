@@ -44,9 +44,40 @@ export const STORAGE_KEYS = {
   onboardingComplete: '@mealogue/onboardingComplete',
   mediaMigrationReport: '@mealogue/mediaMigrationReport',
   insightsCache: '@mealogue/insightsCache/v1',
+  monthlyReflections: '@mealogue/monthlyReflections/v1',
 } as const;
 
 export const KEYS = STORAGE_KEYS;
+
+export interface MonthlyReflection {
+  month: string;
+  scope: 'personal' | 'sample';
+  text: string;
+  updatedAt: string;
+}
+
+export async function getMonthlyReflections(): Promise<MonthlyReflection[]> {
+  const notes = await getList<MonthlyReflection>(STORAGE_KEYS.monthlyReflections);
+  if (notes.some((note) => !note || !/^(19|20)\d{2}-(0[1-9]|1[0-2])$/.test(note.month) ||
+    !['personal', 'sample'].includes(note.scope) || typeof note.text !== 'string' || note.text.length > 1200 ||
+    typeof note.updatedAt !== 'string' || !Number.isFinite(Date.parse(note.updatedAt)))) {
+    throw new Error('Saved monthly reflections could not be read.');
+  }
+  return notes;
+}
+
+export async function saveMonthlyReflection(month: string, scope: MonthlyReflection['scope'], text: string): Promise<void> {
+  if (!/^(19|20)\d{2}-(0[1-9]|1[0-2])$/.test(month) || !['personal', 'sample'].includes(scope) || text.length > 1200) {
+    throw new Error('Invalid monthly reflection.');
+  }
+  await withStorageKeys([STORAGE_KEYS.monthlyReflections], async () => {
+    const current = await getMonthlyReflections();
+    const remaining = current.filter((entry) => entry.month !== month || entry.scope !== scope);
+    await writeLists([[STORAGE_KEYS.monthlyReflections, text.trim()
+      ? [...remaining, { month, scope, text: text.trim(), updatedAt: new Date().toISOString() }]
+      : remaining]]);
+  });
+}
 
 const MEMORY_KEYS = [
   STORAGE_KEYS.meals,
