@@ -1,3 +1,4 @@
+import { useI18n, translate } from '../../src/i18n';
 import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
@@ -21,19 +22,21 @@ import type { PersonMealSummary, PersonProfile } from '../../src/types';
 import { colors, shadow } from '../../src/theme';
 import PersonAvatar from '../../src/components/PersonAvatar';
 import CreatePersonModal from '../../src/components/CreatePersonModal';
+import LoadState from '../../src/components/LoadState';
 
 type SortMode = 'recent' | 'count';
 
 function confirmDelete(person: PersonProfile, onConfirm: () => void) {
-  const message = 'This soft-deletes the profile only. Meal memories stay in the archive.';
+  const message = translate('This soft-deletes the profile only. Meal memories stay in the archive.');
+  const title = translate('Delete {name}?', { name: person.name });
   if (Platform.OS === 'web') {
     // eslint-disable-next-line no-restricted-globals
-    if (confirm(`Delete ${person.name}?\n\n${message}`)) onConfirm();
+    if (confirm(`${title}\n\n${message}`)) onConfirm();
     return;
   }
-  Alert.alert(`Delete ${person.name}?`, message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete person', style: 'destructive', onPress: onConfirm },
+  Alert.alert(title, message, [
+    { text: translate('Cancel'), style: 'cancel' },
+    { text: translate('Delete person'), style: 'destructive', onPress: onConfirm },
   ]);
 }
 
@@ -42,27 +45,32 @@ function normalizeName(name: string): string {
 }
 
 export default function PeopleLibraryPage() {
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [summaries, setSummaries] = useState<PersonMealSummary[]>([]);
   const [query, setQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [editingPerson, setEditingPerson] = useState<PersonProfile | undefined>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+  const [merging, setMerging] = useState(false);
 
   const refresh = useCallback(async () => {
-    const next = await getPersonMealSummaries();
-    setSummaries(next);
+    setLoading(true);
+    setError(undefined);
+    try {
+      setSummaries(await getPersonMealSummaries());
+    } catch {
+      setError('Could not load people.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      let active = true;
-      getPersonMealSummaries().then((next) => {
-        if (active) setSummaries(next);
-      });
-      return () => {
-        active = false;
-      };
-    }, []),
+      void refresh();
+    }, [refresh]),
   );
 
   const duplicateGroups = useMemo(() => {
@@ -84,6 +92,7 @@ export default function PeopleLibraryPage() {
           person.name,
           person.nickname,
           person.relationship,
+          person.relationship ? t(person.relationship) : undefined,
           person.note,
         ].some((value) => value?.toLowerCase().includes(needle));
       })
@@ -95,9 +104,12 @@ export default function PeopleLibraryPage() {
         return (b.lastSharedMealDate ?? '').localeCompare(a.lastSharedMealDate ?? '')
           || b.sharedMealCount - a.sharedMealCount;
       });
-  }, [query, sortMode, summaries]);
+  }, [query, sortMode, summaries, t]);
 
   const handleMergeDuplicates = async () => {
+    if (merging) return;
+    setMerging(true);
+    try {
     for (const group of duplicateGroups) {
       const sorted = [...group].sort((a, b) => a.person.createdAt.localeCompare(b.person.createdAt));
       const keeper = sorted[0].person;
@@ -107,37 +119,42 @@ export default function PeopleLibraryPage() {
       }
     }
     await refresh();
+    } catch {
+      setError('Could not merge these people. Please try again.');
+    } finally {
+      setMerging(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
-          <Pressable style={styles.navButton} onPress={() => router.back()}>
-            <Text style={styles.navButtonText}>Back</Text>
+          <Pressable accessibilityRole="button" style={styles.navButton} onPress={() => router.canGoBack() ? router.back() : router.replace('/')}>
+            <Text style={styles.navButtonText}>{t("Back")}</Text>
           </Pressable>
-          <Pressable style={styles.navButton} onPress={() => setEditingPerson({
+          <Pressable accessibilityRole="button" style={styles.navButton} onPress={() => setEditingPerson({
             id: '',
             name: '',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           })}>
-            <Text style={styles.navButtonText}>Add person</Text>
+            <Text style={styles.navButtonText}>{t("Add person")}</Text>
           </Pressable>
         </View>
 
         <View style={styles.header}>
-          <Text style={styles.kicker}>Meal companions</Text>
-          <Text style={styles.title}>People at my table</Text>
+          <Text style={styles.kicker}>{t("Meal companions")}</Text>
+          <Text style={styles.title}>{t("People at my table")}</Text>
           <Text style={styles.subtitle}>
-            Reusable people profiles for the meals you share. Mealog never reads contacts.
-          </Text>
+            {t("Reusable people profiles for the meals you share. Mealog never reads contacts.")}</Text>
         </View>
 
         <TextInput
+          accessibilityLabel={t('Search by name or relationship')}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search by name or relationship"
+          placeholder={t("Search by name or relationship")}
           placeholderTextColor="rgba(141, 123, 102, 0.52)"
           style={styles.searchInput}
         />
@@ -147,12 +164,14 @@ export default function PeopleLibraryPage() {
             const active = sortMode === mode;
             return (
               <Pressable
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
                 key={mode}
                 style={[styles.sortChip, active && styles.sortChipActive]}
                 onPress={() => setSortMode(mode)}
               >
                 <Text style={[styles.sortText, active && styles.sortTextActive]}>
-                  {mode === 'recent' ? 'Recent shared' : 'Most shared'}
+                  {mode === 'recent' ? t('Recent shared') : t('Most shared')}
                 </Text>
               </Pressable>
             );
@@ -160,18 +179,19 @@ export default function PeopleLibraryPage() {
         </View>
 
         {duplicateGroups.length > 0 ? (
-          <Pressable style={styles.mergeNote} onPress={handleMergeDuplicates}>
-            <Text style={styles.mergeTitle}>Merge duplicate names</Text>
+          <Pressable accessibilityRole="button" style={styles.mergeNote} onPress={handleMergeDuplicates} disabled={merging}>
+            <Text style={styles.mergeTitle}>{t("Merge duplicate names")}</Text>
             <Text style={styles.mergeBody}>
-              {duplicateGroups.length} possible duplicate group found.
-            </Text>
+              {t('{count} possible duplicate group found.', { count: duplicateGroups.length })}</Text>
           </Pressable>
         ) : null}
 
+        <LoadState loading={loading} error={error} onRetry={refresh} />
         {visibleSummaries.length > 0 ? (
           <View style={styles.peopleList}>
             {visibleSummaries.map((summary) => (
               <Pressable
+                accessibilityRole="button"
                 key={summary.person.id}
                 style={styles.personRow}
                 onPress={() => router.push(`/people/${summary.person.id}`)}
@@ -180,38 +200,48 @@ export default function PeopleLibraryPage() {
                 <View style={styles.personTextWrap}>
                   <Text style={styles.personName}>{summary.person.nickname ?? summary.person.name}</Text>
                   <Text style={styles.personMeta}>
-                    {summary.person.relationship ?? 'A remembered seat'} · {summary.sharedMealCount} shared meals
-                  </Text>
+                    {t(summary.person.relationship ?? 'A remembered seat')} · {t('{count} shared meals', { count: summary.sharedMealCount })}</Text>
                   <Text style={styles.personDate}>
-                    Last shared: {summary.lastSharedMealDate ?? 'not yet'}
+                    {t('Last shared: {date}', { date: summary.lastSharedMealDate ?? t('not yet') })}
                   </Text>
                 </View>
                 <View style={styles.rowActions}>
-                  <Pressable style={styles.smallButton} onPress={() => setEditingPerson(summary.person)}>
-                    <Text style={styles.smallButtonText}>Edit</Text>
+                  <Pressable accessibilityRole="button" style={styles.smallButton} onPress={(event) => {
+                    event.stopPropagation();
+                    setEditingPerson(summary.person);
+                  }}>
+                    <Text style={styles.smallButtonText}>{t("Edit")}</Text>
                   </Pressable>
                   <Pressable
+                    accessibilityRole="button"
                     style={styles.deleteButton}
-                    onPress={() => confirmDelete(summary.person, async () => {
-                      await softDeletePersonProfile(summary.person.id);
-                      await refresh();
-                    })}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      confirmDelete(summary.person, async () => {
+                      try {
+                        await softDeletePersonProfile(summary.person.id);
+                        await refresh();
+                      } catch {
+                        setError('Could not delete this person. Please try again.');
+                      }
+                      });
+                    }}
                   >
-                    <Text style={styles.deleteButtonText}>Delete</Text>
+                    <Text style={styles.deleteButtonText}>{t("Delete")}</Text>
                   </Pressable>
                 </View>
               </Pressable>
             ))}
           </View>
-        ) : (
+        ) : loading || error ? null : (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyTitle}>
-              {query.trim() ? 'No one found.' : 'No one has taken a seat yet.'}
+              {query.trim() ? t('No one found.') : t('No one has taken a seat yet.')}
             </Text>
             <Text style={styles.emptyBody}>
               {query.trim()
-                ? 'Add this person to your table.'
-                : 'Add someone the next time you share a meal.'}
+                ? t('Add this person to your table.')
+                : t('Add someone the next time you share a meal.')}
             </Text>
           </View>
         )}

@@ -1,0 +1,84 @@
+{
+  "base": "https://mealog.qs2077.workers.dev",
+  "generatedAt": "2026-09-08T02:17:50.677Z",
+  "results": [
+    {
+      "test": "Fresh visitor, five people, past/current dates and managed sample photos",
+      "status": "PASS",
+      "detail": {
+        "meals": 13,
+        "anchor": "2026-09-08T02:16:39.246Z"
+      }
+    },
+    {
+      "test": "Repeat visit does not drift or overwrite sample records",
+      "status": "PASS"
+    },
+    {
+      "test": "Upload, add mood/person, save to detail, delete computer source, refresh",
+      "status": "PASS",
+      "detail": {
+        "id": "d507c70a-3f41-42f0-b704-f75d7b21e5d0",
+        "uri": "indexeddb://mealog-media/486a2f40-3f31-4e76-b703-13a372eeea2b"
+      }
+    },
+    {
+      "test": "Replacing a photo creates a distinct managed image, same meal ID",
+      "status": "PASS"
+    },
+    {
+      "test": "Close and reopen App page: meal and image persist",
+      "status": "PASS"
+    },
+    {
+      "test": "Archive/calendar, Month Memories, people, Insights, Collection deep links and thumbnails",
+      "status": "PASS"
+    },
+    {
+      "test": "Actual IndexedDB write failure: visible error, intact form, no corrupt meal, one retry record",
+      "status": "PASS"
+    },
+    {
+      "test": "Clear samples preserves new and edited memories; reload never reseeds",
+      "status": "PASS"
+    },
+    {
+      "test": "Delete meal updates Archive without removing other records",
+      "status": "PASS"
+    },
+    {
+      "test": "Language preference persists; Chinese screens render without image failures",
+      "status": "PASS"
+    },
+    {
+      "test": "Separate visitors isolated; desktop width <=460, viewport bounded, no document horizontal overflow",
+      "status": "PASS"
+    },
+    {
+      "test": "Clear untouched samples leaves a usable empty App and disabled empty AI state",
+      "status": "PASS"
+    },
+    {
+      "test": "Interrupted sample import resumes without duplicate people or meals",
+      "status": "PASS"
+    },
+    {
+      "test": "Actual legacy blob migration for meal, avatar and shared photo; revoked source survives reload; missing source does not crash",
+      "status": "PASS",
+      "detail": {
+        "totalLegacyMediaRecords": 4,
+        "successfullyMigrated": 0,
+        "alreadyManaged": 3,
+        "sourceFilesMissing": 1,
+        "migrationFailed": 0,
+        "databaseRecordsUpdated": 1,
+        "completedAt": "2026-09-08T02:17:50.530Z"
+      }
+    },
+    {
+      "test": "No uncaught browser runtime errors",
+      "status": "PASS"
+    }
+  ],
+  "errors": []
+}

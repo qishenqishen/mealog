@@ -1,3 +1,4 @@
+import { useI18n, translate } from '../../src/i18n';
 import { useCallback, useMemo, useState } from 'react';
 import {
   Image,
@@ -27,7 +28,7 @@ import type {
 } from '../../src/types';
 import { colors, shadow } from '../../src/theme';
 import PersonAvatar from '../../src/components/PersonAvatar';
-import { formatSharedWith, getPersonDisplayName } from '../../src/utils/people';
+import LoadState from '../../src/components/LoadState';
 
 // ── Labels ──────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ function parseMonthKey(key: string): { year: number; month: number } {
 
 function getMonthLabel(key: string): string {
   const [year, month] = key.split('-').map(Number);
-  return `${MONTH_NAMES[month - 1]} ${year}`;
+  return translate('{month} {year}', { month: translate(MONTH_NAMES[month - 1]), year });
 }
 
 function getDayLabel(dateStr: string): string {
@@ -114,7 +115,21 @@ function getDayLabel(dateStr: string): string {
 
 function getMoodLabel(meal: MealEntry): string | undefined {
   const mood = meal.moodTags[0] ?? meal.moodTag;
-  return mood ? MOOD_LABELS[mood] ?? mood : undefined;
+  return mood ? translate(MOOD_LABELS[mood] ?? mood) : undefined;
+}
+
+function getPersonDisplayName(person?: PersonProfile, companion?: MealCompanion): string {
+  return (person?.deletedAt
+    ? companion?.personNameSnapshot
+    : person?.nickname ?? person?.name ?? companion?.personNameSnapshot) ?? translate('Deleted person');
+}
+
+function formatSharedWith(names: string[]): string | undefined {
+  const clean = names.map((name) => name.trim()).filter(Boolean);
+  if (!clean.length) return undefined;
+  if (clean.length === 1) return translate('Shared with {name}', { name: clean[0] });
+  if (clean.length === 2) return translate('Shared with {first} and {second}', { first: clean[0], second: clean[1] });
+  return translate('Shared with {first}, {second}, and {count} others', { first: clean[0], second: clean[1], count: clean.length - 2 });
 }
 
 function groupMealsByMonth(meals: MealEntry[]): MonthGroup[] {
@@ -208,23 +223,24 @@ function distinctDays(meals: MealEntry[]): number {
 
 function monthWhisper(group: MonthGroup): string {
   const photoCount = group.meals.filter((meal) => meal.photoUri).length;
-  if (photoCount >= 6) return 'A month with photographs at the table.';
+  if (photoCount >= 6) return translate('A month with photographs at the table.');
   if (group.meals.some((meal) => meal.peopleTags.length > 0)) {
-    return 'A table with company remembered.';
+    return translate('A table with company remembered.');
   }
   if (group.meals.some((meal) => meal.moodTags.length > 0 || meal.moodTag)) {
-    return 'A month held by small feelings.';
+    return translate('A month held by small feelings.');
   }
-  return 'Each month, a new table is set.';
+  return translate('Each month, a new table is set.');
 }
 
 // ── Components ──────────────────────────────────────────────
 
 function TileFallback({ meal }: { meal: MealEntry }) {
+  const { t } = useI18n();
   return (
     <View style={styles.tileFallback}>
       <View style={styles.fallbackPlate} />
-      <Text style={styles.fallbackInitial}>{MEAL_TYPE_INITIALS[meal.mealType]}</Text>
+      <Text style={styles.fallbackInitial}>{t(MEAL_TYPE_INITIALS[meal.mealType])}</Text>
     </View>
   );
 }
@@ -258,6 +274,7 @@ function MemoryTile({
 
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [
         styles.tile,
@@ -356,6 +373,7 @@ function MonthWall({
   sharedPhotos: SharedMealPhoto[];
   onMealPress: (meal: MealEntry) => void;
 }) {
+  const { t, locale } = useI18n();
   const selectedDateMeals = group.meals.filter((meal) => meal.date === selectedDateKey);
   const otherMeals = group.meals.filter((meal) => meal.date !== selectedDateKey);
   const displayMeals =
@@ -379,33 +397,28 @@ function MonthWall({
         <View style={styles.monthStamp}>
           <Text style={styles.monthStampNumber}>{group.meals.length}</Text>
           <Text style={styles.monthStampText}>
-            {group.meals.length === 1 ? 'memory' : 'memories'}
+            {group.meals.length === 1 ? t('memory') : t('memories')}
           </Text>
         </View>
       </View>
 
       <View style={styles.monthStatsLine}>
         <Text style={styles.monthStatsText}>
-          {group.meals.length} meals logged
-        </Text>
+          {t('{count} meals logged', { count: group.meals.length })}</Text>
         <View style={styles.monthStatsDot} />
         <Text style={styles.monthStatsText}>
-          {sharedMealsCount} shared meals
-        </Text>
+          {t('{count} shared meals', { count: sharedMealsCount })}</Text>
       </View>
 
       <View style={styles.monthStatsLine}>
         <Text style={styles.monthStatsText}>
-          {daysWithMeals} {daysWithMeals === 1 ? 'day' : 'days'} with meals
-        </Text>
+          {t(daysWithMeals === 1 ? '{count} day with meals' : '{count} days with meals', { count: daysWithMeals })}</Text>
         <View style={styles.monthStatsDot} />
         <Text style={styles.monthStatsText}>
-          {uniquePeopleCount} people at the table
-        </Text>
+          {t('{count} people at the table', { count: uniquePeopleCount })}</Text>
         <View style={styles.monthStatsDot} />
         <Text style={styles.monthStatsText}>
-          {photoCount} photographs
-        </Text>
+          {t('{count} photographs', { count: photoCount })}</Text>
       </View>
 
       {displayMeals.length > 0 ? (
@@ -418,10 +431,9 @@ function MonthWall({
         />
       ) : (
         <View style={styles.monthEmptyPanel}>
-          <Text style={styles.monthEmptyTitle}>This month is still quiet.</Text>
+          <Text style={styles.monthEmptyTitle}>{t("This month is still quiet.")}</Text>
           <Text style={styles.monthEmptyBody}>
-            The calendar is ready, and meal memories will gather here when they arrive.
-          </Text>
+            {t("The calendar is ready, and meal memories will gather here when they arrive.")}</Text>
         </View>
       )}
     </View>
@@ -435,18 +447,21 @@ function ViewToggle({
   activeView: ArchiveView;
   onChange: (view: ArchiveView) => void;
 }) {
+  const { t, locale } = useI18n();
   return (
     <View style={styles.viewToggle}>
       {(['calendar', 'memories'] as const).map((view) => {
         const active = activeView === view;
         return (
           <Pressable
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
             key={view}
             style={[styles.viewToggleItem, active && styles.viewToggleItemActive]}
             onPress={() => onChange(view)}
           >
             <Text style={[styles.viewToggleText, active && styles.viewToggleTextActive]}>
-              {view === 'calendar' ? 'Calendar' : 'Memories'}
+              {view === 'calendar' ? t('Calendar') : t('Memories')}
             </Text>
           </Pressable>
         );
@@ -486,6 +501,7 @@ function MonthCalendar({
   sharedPhotos: SharedMealPhoto[];
   onDayPress: (dateKey: string, meals: MealEntry[]) => void;
 }) {
+  const { t, locale } = useI18n();
   const cells = getCalendarCells(group.key);
   const todayKey = toDateKey(new Date());
   const mealsByDate = new Map<string, MealEntry[]>();
@@ -500,14 +516,14 @@ function MonthCalendar({
     <View style={styles.calendarPaper}>
       <View style={styles.calendarHeader}>
         <View>
-          <Text style={styles.calendarEyebrow}>Month table</Text>
+          <Text style={styles.calendarEyebrow}>{t("Month table")}</Text>
           <Text style={styles.calendarTitle}>{group.label}</Text>
         </View>
-        <Text style={styles.calendarHint}>Tap a day to open its table</Text>
+        <Text style={styles.calendarHint}>{t("Tap a day to open its table")}</Text>
       </View>
 
       <View style={styles.calendarLegend}>
-        {['Meal', 'People', 'Photo'].map((label) => (
+        {[t('Meal'), t('People'), t('Photo')].map((label) => (
           <View key={label} style={styles.calendarLegendItem}>
             <View style={styles.calendarLegendMark} />
             <Text style={styles.calendarLegendText}>{label}</Text>
@@ -518,7 +534,7 @@ function MonthCalendar({
       <View style={styles.weekdayRow}>
         {WEEKDAY_LABELS.map((weekday) => (
           <Text key={weekday} style={styles.weekdayText}>
-            {weekday}
+            {t(weekday)}
           </Text>
         ))}
       </View>
@@ -553,6 +569,9 @@ function MonthCalendar({
 
           return (
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${new Date(`${dateKey}T12:00:00`).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })}, ${t('{count} meals', { count: dateMeals.length })}`}
+              accessibilityState={{ selected: isSelected }}
               key={dateKey}
               style={({ pressed }) => [
                 styles.calendarDayCell,
@@ -581,7 +600,7 @@ function MonthCalendar({
                 ) : hasMeals && firstMealType ? (
                   <View style={styles.calendarMealFallback}>
                     <Text style={styles.calendarMealFallbackText}>
-                      {MEAL_TYPE_INITIALS[firstMealType]}
+                      {t(MEAL_TYPE_INITIALS[firstMealType])}
                     </Text>
                   </View>
                 ) : null}
@@ -607,12 +626,12 @@ function MonthCalendar({
                     ) : null}
                   </View>
                 ) : hasPeople ? (
-                  <CalendarStatusDot label="Pe" active={true} />
+                  <CalendarStatusDot label={t("Pe")} active={true} />
                 ) : null}
                 {hasMeals || hasPhoto ? (
                   <View style={styles.calendarMiniMarks}>
-                    {hasMeals ? <CalendarStatusDot label="M" active={true} /> : null}
-                    {hasPhoto ? <CalendarStatusDot label="Ph" active={true} /> : null}
+                    {hasMeals ? <CalendarStatusDot label={t("M")} active={true} /> : null}
+                    {hasPhoto ? <CalendarStatusDot label={t("Ph")} active={true} /> : null}
                   </View>
                 ) : null}
               </View>
@@ -627,6 +646,7 @@ function MonthCalendar({
 // ── Archive Screen ──────────────────────────────────────────
 
 export default function ArchiveScreen() {
+  const { t, locale } = useI18n();
   const router = useRouter();
   const initialDateKey = toDateKey(new Date());
   const initialMonthKey = toMonthKey(new Date());
@@ -640,10 +660,15 @@ export default function ArchiveScreen() {
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [daySheetDateKey, setDaySheetDateKey] = useState<string | undefined>();
   const [daySheetMeals, setDaySheetMeals] = useState<MealEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+  const [reloadToken, setReloadToken] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      setLoading(true);
+      setError(undefined);
       Promise.all([
         getMeals(),
         getMealCompanions(),
@@ -655,11 +680,15 @@ export default function ArchiveScreen() {
         setCompanions(nextCompanions);
         setPeople(nextPeople);
         setSharedPhotos(nextPhotos);
+      }).catch(() => {
+        if (active) setError('Could not load your meals.');
+      }).finally(() => {
+        if (active) setLoading(false);
       });
       return () => {
         active = false;
       };
-    }, []),
+    }, [reloadToken]),
   );
 
   const handleMealPress = useCallback(
@@ -669,14 +698,14 @@ export default function ArchiveScreen() {
     [router],
   );
 
-  const monthGroups = useMemo(() => groupMealsByMonth(allMeals), [allMeals]);
+  const monthGroups = useMemo(() => groupMealsByMonth(allMeals), [allMeals, locale]);
   const selectedMonth = useMemo(
     () => buildMonthGroup(selectedMonthKey, allMeals),
-    [allMeals, selectedMonthKey],
+    [allMeals, selectedMonthKey, locale],
   );
   const monthOptions = useMemo(
     () => mergeMonthOptions(monthGroups, selectedMonthKey, initialMonthKey),
-    [initialMonthKey, monthGroups, selectedMonthKey],
+    [initialMonthKey, monthGroups, selectedMonthKey, locale],
   );
   const peopleById = useMemo(
     () => new Map(people.map((person) => [person.id, person])),
@@ -695,10 +724,8 @@ export default function ArchiveScreen() {
   const handleCalendarDayPress = useCallback((dateKey: string, meals: MealEntry[]) => {
     setSelectedDateKey(dateKey);
     setSelectedMonthKey(getMonthKey(dateKey));
-    if (meals.length > 0) {
-      setDaySheetDateKey(dateKey);
-      setDaySheetMeals(meals);
-    }
+    setDaySheetDateKey(dateKey);
+    setDaySheetMeals(meals);
   }, []);
 
   return (
@@ -708,17 +735,17 @@ export default function ArchiveScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.kicker}>Mealog archive</Text>
-          <Text style={styles.title}>Month memories</Text>
+          <Text style={styles.kicker}>{t("Mealog archive")}</Text>
+          <Text style={styles.title}>{t("Month memories")}</Text>
           <Text style={styles.subtitle}>
-            A wall of tables, photographs, and small things that stayed.
-          </Text>
-          <Pressable style={styles.peopleLibraryLink} onPress={() => router.push('/people')}>
-            <Text style={styles.peopleLibraryLinkText}>People at my table</Text>
+            {t("A wall of tables, photographs, and small things that stayed.")}</Text>
+          <Pressable accessibilityRole="button" style={styles.peopleLibraryLink} onPress={() => router.push('/people')}>
+            <Text style={styles.peopleLibraryLinkText}>{t("People at my table")}</Text>
           </Pressable>
         </View>
 
         <Pressable
+          accessibilityRole="button"
           style={({ pressed }) => [
             styles.monthSwitch,
             pressed && styles.monthSwitchPressed,
@@ -726,15 +753,16 @@ export default function ArchiveScreen() {
           onPress={() => setMonthPickerOpen(true)}
         >
           <View>
-            <Text style={styles.monthSwitchLabel}>Current table</Text>
+            <Text style={styles.monthSwitchLabel}>{t("Current table")}</Text>
             <Text style={styles.monthSwitchMonth}>{selectedMonth.label}</Text>
           </View>
           <Text style={styles.monthSwitchChevron}>⌄</Text>
         </Pressable>
 
+        <LoadState loading={loading} error={error} onRetry={() => setReloadToken((value) => value + 1)} />
         <ViewToggle activeView={activeView} onChange={setActiveView} />
 
-        {activeView === 'calendar' ? (
+        {loading || error ? null : activeView === 'calendar' ? (
           <MonthCalendar
             group={selectedMonth}
             selectedDateKey={selectedDateKey}
@@ -764,16 +792,24 @@ export default function ArchiveScreen() {
         onRequestClose={() => setDaySheetDateKey(undefined)}
       >
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('Close')}
           style={styles.pickerOverlay}
           onPress={() => setDaySheetDateKey(undefined)}
         >
           <Pressable style={styles.daySheet} onPress={(event) => event.stopPropagation()}>
+            <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={styles.pickerTitle}>
               {daySheetDateKey
-                ? `${getMonthLabel(getMonthKey(daySheetDateKey))} ${parseDateKey(daySheetDateKey).day}`
-                : 'This day'}
+                ? new Date(`${daySheetDateKey}T12:00:00`).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+                : t('This day')}
             </Text>
-            <Text style={styles.daySheetSubtitle}>Meal memories at this table</Text>
+            <Text style={styles.daySheetSubtitle}>{t("Meal memories at this table")}</Text>
+            {daySheetMeals.length === 0 ? (
+              <View>
+                <Text style={styles.daySheetSubtitle}>{t('No meals on this day yet.')}</Text>
+              </View>
+            ) : null}
             {daySheetMeals.map((meal) => {
               const mealCompanions = companions.filter((companion) => companion.mealId === meal.id);
               const sharedLine = formatSharedWith(
@@ -788,6 +824,7 @@ export default function ArchiveScreen() {
                 ?? sharedPhoto?.imageUrl;
               return (
                 <Pressable
+                  accessibilityRole="button"
                   key={meal.id}
                   style={styles.dayMealRow}
                   onPress={() => {
@@ -815,6 +852,7 @@ export default function ArchiveScreen() {
                 </Pressable>
               );
             })}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -826,15 +864,19 @@ export default function ArchiveScreen() {
         onRequestClose={() => setMonthPickerOpen(false)}
       >
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('Close')}
           style={styles.pickerOverlay}
           onPress={() => setMonthPickerOpen(false)}
         >
           <View style={styles.pickerSheet}>
-            <Text style={styles.pickerTitle}>Choose a month</Text>
+            <Text style={styles.pickerTitle}>{t("Choose a month")}</Text>
             {monthOptions.map((group) => {
               const active = group.key === selectedMonth.key;
               return (
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
                   key={group.key}
                   style={[styles.pickerMonth, active && styles.pickerMonthActive]}
                   onPress={() => handleMonthSelect(group)}
@@ -849,7 +891,7 @@ export default function ArchiveScreen() {
                       {group.label}
                     </Text>
                     <Text style={styles.pickerMonthMeta}>
-                      {group.meals.length} {group.meals.length === 1 ? 'memory' : 'memories'}
+                      {t(group.meals.length === 1 ? '{count} memory' : '{count} memories', { count: group.meals.length })}
                     </Text>
                   </View>
                   {active ? <Text style={styles.pickerActiveMark}>•</Text> : null}
@@ -1391,6 +1433,10 @@ const styles = StyleSheet.create({
     color: colors.mutedText,
   },
   daySheet: {
+    width: '100%',
+    maxWidth: 360,
+    maxHeight: '85%',
+    alignSelf: 'center',
     borderRadius: 28,
     paddingHorizontal: 18,
     paddingTop: 20,

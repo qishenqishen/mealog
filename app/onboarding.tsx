@@ -1,3 +1,4 @@
+import { useI18n, translate } from '../src/i18n';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -104,24 +105,29 @@ const PERMISSION_LABELS: Record<PermissionKind, { title: string; body: string }>
 };
 
 function notify(title: string, message: string) {
+  if (Platform.OS === 'web') {
+    alert(`${title}\n\n${message}`);
+    return;
+  }
   Alert.alert(title, message);
 }
 
 function permissionStatusText(result?: PermissionResult) {
-  if (!result) return 'Not asked';
-  if (result.granted) return result.status === 'limited' ? 'Limited' : 'Enabled';
-  if (result.status === 'denied') return 'Denied';
-  return 'Not asked';
+  if (!result) return translate('Not asked');
+  if (result.granted) return result.status === 'limited' ? translate('Limited') : translate('Enabled');
+  if (result.status === 'denied') return translate('Denied');
+  return translate('Not asked');
 }
 
 function PageChips({ chips }: { chips?: string[] }) {
+  const { t } = useI18n();
   if (!chips?.length) return null;
 
   return (
     <View style={styles.chipRow}>
       {chips.map((chip) => (
         <View key={chip} style={styles.chip}>
-          <Text style={styles.chipText}>{chip}</Text>
+          <Text style={styles.chipText}>{t(chip)}</Text>
         </View>
       ))}
     </View>
@@ -185,10 +191,16 @@ function OnboardingScene({ scene }: { scene: SceneKey }) {
 }
 
 export default function OnboardingScreen() {
+  const { t, locale } = useI18n();
   const router = useRouter();
-  const { width, height } = useWindowDimensions();
+  const { width: windowWidth, height } = useWindowDimensions();
+  const [layoutWidth, setLayoutWidth] = useState<number>();
+  const width = layoutWidth ?? (Platform.OS === 'web' ? Math.min(windowWidth, 460) : windowWidth);
   const scrollRef = useRef<ScrollView>(null);
   const [pageIndex, setPageIndex] = useState(0);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ x: width * pageIndex, animated: false });
+  }, [width]);
   const [entering, setEntering] = useState(false);
   const [permissionBusy, setPermissionBusy] = useState<PermissionKind | null>(null);
   const [permissionResults, setPermissionResults] = useState<
@@ -217,10 +229,10 @@ export default function OnboardingScreen() {
       const result = await requestPermission(kind);
       setPermissionResults((current) => ({ ...current, [kind]: result }));
       if (!result.granted && result.message) {
-        notify('Permission not enabled', result.message);
+        notify(t('Permission not enabled'), t(result.message));
       }
     } catch {
-      notify('Permission unavailable', 'Mealog could not open this permission request right now.');
+      notify(t('Permission unavailable'), t('Mealog could not open this permission request right now.'));
     } finally {
       setPermissionBusy(null);
     }
@@ -234,7 +246,7 @@ export default function OnboardingScreen() {
       router.replace('/');
     } catch {
       setEntering(false);
-      notify('Could not enter Mealog', 'Please try again in a moment.');
+      notify(t('Could not enter Mealog'), t('Please try again in a moment.'));
     }
   };
 
@@ -248,7 +260,13 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={styles.container}>
+      <View
+        style={styles.container}
+        onLayout={(event) => {
+          const nextWidth = event.nativeEvent.layout.width;
+          if (nextWidth > 0) setLayoutWidth(nextWidth);
+        }}
+      >
         <ScrollView
           ref={scrollRef}
           horizontal
@@ -271,9 +289,9 @@ export default function OnboardingScreen() {
                 <OnboardingScene scene={item.scene} />
 
                 <View style={styles.copyBlock}>
-                  <Text style={styles.eyebrow}>{item.eyebrow}</Text>
-                  <Text style={styles.title}>{item.title}</Text>
-                  <Text style={styles.body}>{item.body}</Text>
+                  <Text style={styles.eyebrow}>{t(item.eyebrow)}</Text>
+                  <Text style={styles.title}>{t(item.title)}</Text>
+                  <Text style={styles.body}>{t(item.body)}</Text>
                   <PageChips chips={item.chips} />
                 </View>
 
@@ -287,7 +305,7 @@ export default function OnboardingScreen() {
                         <Pressable
                           key={kind}
                           accessibilityRole="button"
-                          accessibilityLabel={`Enable ${details.title} permission`}
+                          accessibilityLabel={t('Enable {permission} permission', { permission: t(details.title) })}
                           style={({ pressed }) => [
                             styles.permissionButton,
                             result?.granted && styles.permissionButtonGranted,
@@ -297,8 +315,8 @@ export default function OnboardingScreen() {
                           disabled={Boolean(permissionBusy)}
                         >
                           <View style={styles.permissionCopy}>
-                            <Text style={styles.permissionTitle}>{details.title}</Text>
-                            <Text style={styles.permissionBody}>{details.body}</Text>
+                            <Text style={styles.permissionTitle}>{t(details.title)}</Text>
+                            <Text style={styles.permissionBody}>{t(details.body)}</Text>
                           </View>
                           <Text
                             style={[
@@ -306,7 +324,7 @@ export default function OnboardingScreen() {
                               result?.granted && styles.permissionStatusGranted,
                             ]}
                           >
-                            {busy ? 'Opening' : permissionStatusText(result)}
+                            {busy ? t('Opening') : permissionStatusText(result)}
                           </Text>
                         </Pressable>
                       );
@@ -319,7 +337,7 @@ export default function OnboardingScreen() {
                       ]}
                       onPress={() => scrollToPage(pageIndex + 1)}
                     >
-                      <Text style={styles.skipPermissionText}>Skip for now</Text>
+                      <Text style={styles.skipPermissionText}>{t("Skip for now")}</Text>
                     </Pressable>
                   </View>
                 ) : null}
@@ -341,7 +359,7 @@ export default function OnboardingScreen() {
           <View style={styles.actions}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Go back to previous onboarding page"
+              accessibilityLabel={t("Go back to previous onboarding page")}
               style={({ pressed }) => [
                 styles.backButton,
                 pageIndex === 0 && styles.backButtonHidden,
@@ -350,12 +368,12 @@ export default function OnboardingScreen() {
               onPress={() => scrollToPage(pageIndex - 1)}
               disabled={pageIndex === 0}
             >
-              <Text style={styles.backButtonText}>Back</Text>
+              <Text style={styles.backButtonText}>{t("Back")}</Text>
             </Pressable>
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={lastPage ? 'Enter Mealog as guest' : `Continue from ${page.title}`}
+              accessibilityLabel={lastPage ? t('Enter Mealog as guest') : t('Continue from {title}', { title: t(page.title) })}
               style={({ pressed }) => [
                 styles.primaryButton,
                 pressed && styles.buttonPressed,
@@ -365,7 +383,7 @@ export default function OnboardingScreen() {
               disabled={entering}
             >
               <Text style={styles.primaryButtonText}>
-                {lastPage ? 'Enter Mealog' : 'Continue'}
+                {lastPage ? t('Enter Mealog') : t('Continue')}
               </Text>
             </Pressable>
           </View>

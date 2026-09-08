@@ -1,6 +1,8 @@
+import { useI18n, translate, type Locale } from '../../src/i18n';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,6 +27,7 @@ import type { AchievementFamily, AchievementMigrationSummary } from '../../src/t
 import AchievementStamp from '../../src/components/AchievementStamp';
 import { assertKeepsakeArtCoverage } from '../../src/constants/keepsakeArt';
 import { colors, shadow } from '../../src/theme';
+import LoadState from '../../src/components/LoadState';
 
 type CollectionState = {
   achievements: EvaluatedAchievement[];
@@ -51,9 +54,9 @@ assertKeepsakeArtCoverage([
   ...SECRET_QUESTION_ICON_KEYS,
 ]);
 
-function formatDate(date?: string): string {
+function formatDate(date: string | undefined, locale: Locale): string {
   if (!date) return '';
-  return new Date(date).toLocaleDateString('en-US', {
+  return new Date(date).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -94,11 +97,27 @@ function getStampState(achievement: EvaluatedAchievement) {
   return 'locked';
 }
 
-function shortHint(achievement: EvaluatedAchievement): string {
-  if (isUnlocked(achievement)) return formatDate(achievement.progress.unlockedAt);
-  if (isHiddenLocked(achievement)) return 'waiting';
-  if (achievement.remaining <= 1) return '1 left';
-  return `${achievement.remaining} left`;
+function shortHint(achievement: EvaluatedAchievement, locale: Locale): string {
+  if (isUnlocked(achievement)) return formatDate(achievement.progress.unlockedAt, locale);
+  if (isHiddenLocked(achievement)) return translate('waiting');
+  if (achievement.remaining <= 1) return translate('1 left');
+  return translate('{count} left', { count: achievement.remaining });
+}
+
+function remainingHint(achievement: EvaluatedAchievement): string {
+  const { definition, remaining } = achievement;
+  if (remaining === 0) return translate('Ready to place on the shelf.');
+  const units: Partial<Record<typeof definition.ruleType, string>> = {
+    meal_count: 'meals', distinct_days: 'days', monthly_distinct_days: 'meal days in one month',
+    monthly_presence_streak: 'months', season_coverage: 'seasons', photo_count: 'photographs',
+    meal_photo_count: 'meal photographs', shared_photo_count: 'shared photographs',
+    note_count: 'notes', feeling_count: 'feelings', same_person_meals: 'shared meals with one person',
+    shared_meal_count: 'shared meals', unique_people_count: 'people', single_meal_people_count: 'people at one meal',
+    table_reunion: 'days between shared meals', same_person_season_count: 'seasons with one person',
+    late_meal_count: 'late meals', weekday_meal_days: 'Sundays',
+    meal_type_count: definition.id === 'sweet-corner' ? 'treats' : 'breakfasts',
+  };
+  return translate('{count} more {unit} to find this keepsake.', { count: remaining, unit: translate(units[definition.ruleType] ?? 'moments') });
 }
 
 function getFamilyAchievementGroups(achievements: EvaluatedAchievement[]) {
@@ -123,18 +142,19 @@ function StampCell({
   achievement: EvaluatedAchievement;
   onPress: (achievement: EvaluatedAchievement) => void;
 }) {
+  const { t, locale } = useI18n();
   const unlocked = isUnlocked(achievement);
   const hiddenLocked = isHiddenLocked(achievement);
-  const title = hiddenLocked ? '???' : achievement.definition.title;
-  const status = unlocked ? 'unlocked' : hiddenLocked ? 'secret' : 'in progress';
+  const title = hiddenLocked ? '???' : t(achievement.definition.title);
+  const status = unlocked ? t('unlocked') : hiddenLocked ? t('secret') : t('in progress');
   const stampState = getStampState(achievement);
 
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={hiddenLocked
-        ? '???, secret keepsake, A small moment is still waiting.'
-        : `${title}, ${status}, ${achievement.progress.currentValue} of ${achievement.progress.targetValue}`}
+        ? t('???, secret keepsake, A small moment is still waiting.')
+        : t('{title}, {status}, {current} of {total}', { title, status, current: achievement.progress.currentValue, total: achievement.progress.targetValue })}
       onPress={() => onPress(achievement)}
       style={({ pressed }) => [
         styles.stampCell,
@@ -148,6 +168,7 @@ function StampCell({
         <AchievementStamp
           iconKey={hiddenLocked ? getSecretKeepsakeIconKey(achievement) : achievement.definition.iconKey}
           size={78}
+          deferLoading
           state={stampState}
           progressRatio={achievement.progressRatio}
         />
@@ -161,7 +182,7 @@ function StampCell({
         ) : null}
         {isNew(achievement) ? (
           <View style={styles.newBadge}>
-            <Text style={styles.newText}>NEW</Text>
+            <Text style={styles.newText}>{t("NEW")}</Text>
           </View>
         ) : null}
       </View>
@@ -177,9 +198,9 @@ function StampCell({
         numberOfLines={hiddenLocked ? 2 : 1}
       >
         {hiddenLocked
-          ? 'A small moment\nis still waiting.'
+          ? t('A small moment\nis still waiting.')
           : unlocked
-            ? 'found'
+            ? t('found')
             : `${achievement.progress.currentValue}/${achievement.progress.targetValue}`}
       </Text>
     </Pressable>
@@ -193,10 +214,11 @@ function AlmostThereCard({
   achievement: EvaluatedAchievement;
   onPress: (achievement: EvaluatedAchievement) => void;
 }) {
+  const { t, locale } = useI18n();
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${achievement.definition.title}, ${achievement.progress.currentValue} of ${achievement.progress.targetValue}`}
+      accessibilityLabel={t('{title}, {current} of {total}', { title: t(achievement.definition.title), current: achievement.progress.currentValue, total: achievement.progress.targetValue })}
       onPress={() => onPress(achievement)}
       style={({ pressed }) => [
         styles.almostCard,
@@ -210,12 +232,12 @@ function AlmostThereCard({
         progressRatio={achievement.progressRatio}
       />
       <Text style={styles.almostTitle} numberOfLines={2}>
-        {achievement.definition.title}
+        {t(achievement.definition.title)}
       </Text>
       <Text style={styles.almostProgress}>
         {achievement.progress.currentValue}/{achievement.progress.targetValue}
       </Text>
-      <Text style={styles.almostHint}>{shortHint(achievement)}</Text>
+      <Text style={styles.almostHint}>{shortHint(achievement, locale)}</Text>
     </Pressable>
   );
 }
@@ -229,6 +251,7 @@ function FamilyStampGrid({
   achievements: EvaluatedAchievement[];
   onStampPress: (achievement: EvaluatedAchievement) => void;
 }) {
+  const { t } = useI18n();
   const unlockedCount = achievements.filter(isUnlocked).length;
   const progressRatio = achievements.length > 0
     ? unlockedCount / achievements.length
@@ -237,7 +260,7 @@ function FamilyStampGrid({
   return (
     <View style={styles.familySection}>
       <View style={styles.familyHeader}>
-        <Text style={styles.familyTitle}>{FAMILY_LABELS[family]}</Text>
+        <Text style={styles.familyTitle}>{t(FAMILY_LABELS[family])}</Text>
         <Text style={styles.familyCount}>{unlockedCount} / {achievements.length}</Text>
       </View>
       <View style={styles.familyProgressTrack}>
@@ -265,21 +288,22 @@ function KeepsakeDetailSheet({
   onClose: () => void;
   onViewSource: (achievement: EvaluatedAchievement) => void;
 }) {
+  const { t, locale } = useI18n();
   if (!achievement) return null;
 
   const unlocked = isUnlocked(achievement);
   const hiddenLocked = isHiddenLocked(achievement);
-  const title = hiddenLocked ? '???' : achievement.definition.title;
+  const title = hiddenLocked ? '???' : t(achievement.definition.title);
   const stampState = getStampState(achievement);
   const displayedCurrentValue = Math.min(achievement.progress.currentValue, achievement.progress.targetValue);
   const description = hiddenLocked
-    ? 'A small moment is still waiting.'
-    : achievement.definition.description;
+    ? t('A small moment is still waiting.')
+    : t(achievement.definition.description);
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.sheetOverlay}>
-        <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+        <Pressable accessibilityRole="button" accessibilityLabel={t('Close')} style={styles.sheetBackdrop} onPress={onClose} />
         <View style={styles.detailSheet}>
           <View style={styles.sheetHandle} />
           <ScrollView showsVerticalScrollIndicator={false}>
@@ -295,15 +319,15 @@ function KeepsakeDetailSheet({
             <Text style={styles.detailTitle}>{title}</Text>
             <Text style={styles.detailMeta}>
               {hiddenLocked
-                ? 'Secret keepsake'
-                : `${FAMILY_LABELS[achievement.definition.family]} · Tier ${romanTier(achievement.definition.tier)}`}
+                ? t('Secret keepsake')
+                : t('{family} · Tier {tier}', { family: t(FAMILY_LABELS[achievement.definition.family]), tier: romanTier(achievement.definition.tier) })}
             </Text>
             <Text style={styles.detailDescription}>{description}</Text>
 
             {!hiddenLocked ? (
               <View style={styles.detailProgressBlock}>
                 <View style={styles.detailProgressTop}>
-                  <Text style={styles.detailProgressLabel}>Progress</Text>
+                  <Text style={styles.detailProgressLabel}>{t("Progress")}</Text>
                   <Text style={styles.detailProgressValue}>
                     {displayedCurrentValue} / {achievement.progress.targetValue}
                   </Text>
@@ -317,19 +341,20 @@ function KeepsakeDetailSheet({
                   />
                 </View>
                 <Text style={styles.detailRemaining}>
-                  {unlocked ? 'This keepsake is resting on your shelf.' : achievement.remainingText}
+                  {unlocked ? t('This keepsake is resting on your shelf.') : remainingHint(achievement)}
                 </Text>
               </View>
             ) : null}
 
             {unlocked ? (
               <Text style={styles.detailUnlocked}>
-                Found {formatDate(achievement.progress.unlockedAt)}
+                {t('Found {date}', { date: formatDate(achievement.progress.unlockedAt, locale) })}
               </Text>
             ) : null}
 
             <View style={styles.detailActions}>
               <Pressable
+                accessibilityRole="button"
                 disabled={!achievement.progress.firstSourceMealId}
                 style={[
                   styles.detailPrimary,
@@ -337,10 +362,10 @@ function KeepsakeDetailSheet({
                 ]}
                 onPress={() => onViewSource(achievement)}
               >
-                <Text style={styles.detailPrimaryText}>View related record</Text>
+                <Text style={styles.detailPrimaryText}>{t("View related record")}</Text>
               </Pressable>
-              <Pressable style={styles.detailSecondary} onPress={onClose}>
-                <Text style={styles.detailSecondaryText}>Close</Text>
+              <Pressable accessibilityRole="button" style={styles.detailSecondary} onPress={onClose}>
+                <Text style={styles.detailSecondaryText}>{t("Close")}</Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -355,6 +380,7 @@ function QuietUnlockToast({
 }: {
   achievement?: EvaluatedAchievement;
 }) {
+  const { t, locale } = useI18n();
   if (!achievement) return null;
 
   return (
@@ -366,9 +392,9 @@ function QuietUnlockToast({
           state="newly_unlocked"
         />
         <View style={styles.toastTextWrap}>
-          <Text style={styles.toastKicker}>New keepsake found</Text>
+          <Text style={styles.toastKicker}>{t("New keepsake found")}</Text>
           <Text style={styles.toastTitle} numberOfLines={1}>
-            {achievement.definition.title}
+            {t(achievement.definition.title)}
           </Text>
         </View>
       </View>
@@ -383,6 +409,7 @@ function UnlockModal({
   achievement?: EvaluatedAchievement;
   onClose: () => void;
 }) {
+  const { t, locale } = useI18n();
   if (!achievement) return null;
 
   const major = achievement.definition.celebrationLevel === 'major';
@@ -391,23 +418,23 @@ function UnlockModal({
     return (
       <Modal visible transparent animationType="slide" onRequestClose={onClose}>
         <View style={styles.standardUnlockOverlay}>
-          <Pressable style={styles.unlockBackdrop} onPress={onClose} />
+          <Pressable accessibilityRole="button" accessibilityLabel={t('Close')} style={styles.unlockBackdrop} onPress={onClose} />
           <View style={styles.standardUnlockSheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.standardUnlockKicker}>Unlocked</Text>
+            <Text style={styles.standardUnlockKicker}>{t("Unlocked")}</Text>
             <AchievementStamp
               iconKey={achievement.definition.iconKey}
               size={92}
               state="newly_unlocked"
             />
-            <Text style={styles.unlockTitle}>{achievement.definition.title}</Text>
-            <Text style={styles.unlockBody}>{achievement.definition.description}</Text>
+            <Text style={styles.unlockTitle}>{t(achievement.definition.title)}</Text>
+            <Text style={styles.unlockBody}>{t(achievement.definition.description)}</Text>
             <View style={styles.unlockActions}>
-              <Pressable style={styles.unlockPrimary} onPress={onClose}>
-                <Text style={styles.unlockPrimaryText}>Place on shelf</Text>
+              <Pressable accessibilityRole="button" style={styles.unlockPrimary} onPress={onClose}>
+                <Text style={styles.unlockPrimaryText}>{t("Place on shelf")}</Text>
               </Pressable>
-              <Pressable style={styles.unlockSecondary} onPress={onClose}>
-                <Text style={styles.unlockSecondaryText}>Continue</Text>
+              <Pressable accessibilityRole="button" style={styles.unlockSecondary} onPress={onClose}>
+                <Text style={styles.unlockSecondaryText}>{t("Continue")}</Text>
               </Pressable>
             </View>
           </View>
@@ -429,16 +456,16 @@ function UnlockModal({
             size={118}
             state="newly_unlocked"
           />
-          <Text style={styles.unlockKicker}>A major keepsake was found</Text>
-          <Text style={styles.unlockTitle}>{achievement.definition.title}</Text>
-          <Text style={styles.unlockBody}>{achievement.definition.description}</Text>
-          <Text style={styles.unlockDate}>{formatDate(achievement.progress.unlockedAt)}</Text>
+          <Text style={styles.unlockKicker}>{t("A major keepsake was found")}</Text>
+          <Text style={styles.unlockTitle}>{t(achievement.definition.title)}</Text>
+          <Text style={styles.unlockBody}>{t(achievement.definition.description)}</Text>
+          <Text style={styles.unlockDate}>{formatDate(achievement.progress.unlockedAt, locale)}</Text>
           <View style={styles.unlockActions}>
-            <Pressable style={styles.unlockPrimary} onPress={onClose}>
-              <Text style={styles.unlockPrimaryText}>Place on shelf</Text>
+            <Pressable accessibilityRole="button" style={styles.unlockPrimary} onPress={onClose}>
+              <Text style={styles.unlockPrimaryText}>{t("Place on shelf")}</Text>
             </Pressable>
-            <Pressable style={styles.unlockSecondary} onPress={onClose}>
-              <Text style={styles.unlockSecondaryText}>See your journey</Text>
+            <Pressable accessibilityRole="button" style={styles.unlockSecondary} onPress={onClose}>
+              <Text style={styles.unlockSecondaryText}>{t("See your journey")}</Text>
             </Pressable>
           </View>
         </View>
@@ -448,45 +475,41 @@ function UnlockModal({
 }
 
 export default function CollectionScreen() {
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [state, setState] = useState<CollectionState | null>(null);
   const [unlockModal, setUnlockModal] = useState<EvaluatedAchievement | undefined>();
   const [quietToast, setQuietToast] = useState<EvaluatedAchievement | undefined>();
   const [selectedAchievement, setSelectedAchievement] = useState<EvaluatedAchievement | undefined>();
   const [migrationDismissed, setMigrationDismissed] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
 
   const loadAchievements = useCallback(async () => {
-    const result = await evaluateAndPersistAchievements('MEAL_UPDATED');
-    setState(result);
-    const firstQuietUnlock = result.newlyUnlocked.find((achievement) => (
-      achievement.definition.celebrationLevel === 'quiet'
-    ));
-    const firstVisibleUnlock = result.newlyUnlocked.find((achievement) => (
-      achievement.definition.celebrationLevel !== 'quiet'
-    ));
-    if (firstQuietUnlock) setQuietToast(firstQuietUnlock);
-    if (firstVisibleUnlock) setUnlockModal(firstVisibleUnlock);
+    setLoading(true);
+    setError(undefined);
+    try {
+      const result = await evaluateAndPersistAchievements('MEAL_UPDATED');
+      setState(result);
+      const firstQuietUnlock = result.newlyUnlocked.find((achievement) => (
+        achievement.definition.celebrationLevel === 'quiet'
+      ));
+      const firstVisibleUnlock = result.newlyUnlocked.find((achievement) => (
+        achievement.definition.celebrationLevel !== 'quiet'
+      ));
+      if (firstQuietUnlock) setQuietToast(firstQuietUnlock);
+      if (firstVisibleUnlock) setUnlockModal(firstVisibleUnlock);
+    } catch {
+      setError('Could not load keepsakes.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      let active = true;
-      evaluateAndPersistAchievements('MEAL_UPDATED').then((result) => {
-        if (!active) return;
-        setState(result);
-        const firstQuietUnlock = result.newlyUnlocked.find((achievement) => (
-          achievement.definition.celebrationLevel === 'quiet'
-        ));
-        const firstVisibleUnlock = result.newlyUnlocked.find((achievement) => (
-          achievement.definition.celebrationLevel !== 'quiet'
-        ));
-        if (firstQuietUnlock) setQuietToast(firstQuietUnlock);
-        if (firstVisibleUnlock) setUnlockModal(firstVisibleUnlock);
-      });
-      return () => {
-        active = false;
-      };
-    }, []),
+      void loadAchievements();
+    }, [loadAchievements]),
   );
 
   const achievements = state?.achievements ?? [];
@@ -538,37 +561,54 @@ export default function CollectionScreen() {
     if (!quietToast) return undefined;
 
     const timer = setTimeout(async () => {
-      await markAchievementSeen(quietToast.definition.id);
-      updateAchievementAsSeen(quietToast.definition.id);
-      setQuietToast(undefined);
+      try {
+        await markAchievementSeen(quietToast.definition.id);
+        updateAchievementAsSeen(quietToast.definition.id);
+        setQuietToast(undefined);
+      } catch {
+        setQuietToast(undefined);
+        setError('Could not save these changes. Please try again.');
+      }
     }, 3000);
 
     return () => clearTimeout(timer);
   }, [quietToast, updateAchievementAsSeen]);
 
   const handleOpenStamp = async (achievement: EvaluatedAchievement) => {
-    setSelectedAchievement(achievement);
-    if (achievement.progress.status === 'newly_unlocked') {
-      await markAchievementSeen(achievement.definition.id);
-      updateAchievementAsSeen(achievement.definition.id);
+    try {
+      setSelectedAchievement(achievement);
+      if (achievement.progress.status === 'newly_unlocked') {
+        await markAchievementSeen(achievement.definition.id);
+        updateAchievementAsSeen(achievement.definition.id);
+      }
+    } catch {
+      setError('Could not save these changes. Please try again.');
     }
   };
 
   const handleDismissMigration = async () => {
-    if (!migrationSummary) return;
-    const next = {
-      ...migrationSummary,
-      seenAt: new Date().toISOString(),
-    };
-    await saveAchievementMigrationSummary(next);
-    setState((current) => current ? { ...current, migrationSummary: next } : current);
-    setMigrationDismissed(true);
+    try {
+      if (!migrationSummary) return;
+      const next = {
+        ...migrationSummary,
+        seenAt: new Date().toISOString(),
+      };
+      await saveAchievementMigrationSummary(next);
+      setState((current) => current ? { ...current, migrationSummary: next } : current);
+      setMigrationDismissed(true);
+    } catch {
+      setError('Could not save these changes. Please try again.');
+    }
   };
 
   const handleCloseUnlock = async () => {
-    if (unlockModal) await markAchievementSeen(unlockModal.definition.id);
-    setUnlockModal(undefined);
-    await loadAchievements();
+    try {
+      if (unlockModal) await markAchievementSeen(unlockModal.definition.id);
+      setUnlockModal(undefined);
+      await loadAchievements();
+    } catch {
+      setError('Could not save these changes. Please try again.');
+    }
   };
 
   const handleViewSource = (achievement: EvaluatedAchievement) => {
@@ -585,44 +625,42 @@ export default function CollectionScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Text style={styles.kicker}>Mealog collection</Text>
-          <Text style={styles.title}>Keepsake shelf</Text>
+          <Text style={styles.kicker}>{t("Mealog collection")}</Text>
+          <Text style={styles.title}>{t("Keepsake shelf")}</Text>
           <Text style={styles.subtitle}>
-            A quiet shelf of stamps found through meals, people, notes, photographs, and seasons.
-          </Text>
-          <Pressable style={styles.profileLink} onPress={() => router.push('/profile')}>
-            <Text style={styles.profileLinkText}>Profile and showcase</Text>
+            {t("A quiet shelf of stamps found through meals, people, notes, photographs, and seasons.")}</Text>
+          <Pressable accessibilityRole="button" style={styles.profileLink} onPress={() => router.push('/profile')}>
+            <Text style={styles.profileLinkText}>{t('Your table & settings')}</Text>
           </Pressable>
         </View>
 
+        <LoadState loading={loading} error={error} onRetry={loadAchievements} />
         <View style={styles.shelfHero}>
           <Text style={styles.heroQuote}>
             "{unlocked.length === 0
-              ? 'The shelf is waiting for its first small object.'
-              : `${unlocked.length} keepsakes have found their place.`}"
+              ? t('The shelf is waiting for its first small object.')
+              : t('{count} keepsakes have found their place.', { count: unlocked.length })}"
           </Text>
           <Text style={styles.heroMeta}>
-            {achievements.length} active keepsakes
-          </Text>
+            {t('{count} active keepsakes', { count: achievements.length })}</Text>
         </View>
 
         {showMigrationSummary ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="View migrated keepsakes"
+            accessibilityLabel={t("View migrated keepsakes")}
             style={styles.migrationBanner}
             onPress={handleDismissMigration}
           >
             <Text style={styles.migrationTitle}>
-              You found {migrationSummary?.foundCount} keepsakes from earlier meals.
-            </Text>
-            <Text style={styles.migrationButton}>View keepsakes</Text>
+              {t('You found {count} keepsakes from earlier meals.', { count: migrationSummary?.foundCount ?? 0 })}</Text>
+            <Text style={styles.migrationButton}>{t("View keepsakes")}</Text>
           </Pressable>
         ) : null}
 
         {newlyFound.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Newly Found</Text>
+            <Text style={styles.sectionTitle}>{t("Newly Found")}</Text>
             <View style={styles.stampGrid}>
               {newlyFound.map((achievement) => (
                 <StampCell
@@ -636,7 +674,7 @@ export default function CollectionScreen() {
         ) : null}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Almost There</Text>
+          <Text style={styles.sectionTitle}>{t("Almost There")}</Text>
           {almostThere.length > 0 ? (
             <View style={styles.almostGrid}>
               {almostThere.map((achievement) => (
@@ -647,18 +685,17 @@ export default function CollectionScreen() {
                 />
               ))}
             </View>
-          ) : (
+          ) : loading || error ? null : (
             <View style={styles.emptyPanel}>
-              <Text style={styles.emptyTitle}>Nothing close yet.</Text>
+              <Text style={styles.emptyTitle}>{t("Nothing close yet.")}</Text>
               <Text style={styles.emptyBody}>
-                A few more meal memories will bring the nearest keepsakes into view.
-              </Text>
+                {t("A few more meal memories will bring the nearest keepsakes into view.")}</Text>
             </View>
           )}
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Keepsake Families</Text>
+          <Text style={styles.sectionTitle}>{t("Keepsake Families")}</Text>
           {familyGroups.map((group) => (
             <FamilyStampGrid
               key={group.family}
@@ -671,7 +708,7 @@ export default function CollectionScreen() {
 
         {secretAchievements.length > 0 ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Secret Keepsakes</Text>
+            <Text style={styles.sectionTitle}>{t("Secret Keepsakes")}</Text>
             <View style={styles.stampGrid}>
               {secretAchievements.slice(0, 6).map((achievement) => (
                 <StampCell
@@ -996,6 +1033,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   detailSheet: {
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 460 : undefined,
+    alignSelf: 'center',
     maxHeight: '86%',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
@@ -1168,6 +1208,9 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   standardUnlockSheet: {
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 460 : undefined,
+    alignSelf: 'center',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     paddingHorizontal: 24,

@@ -9,7 +9,13 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck",
+    "check": "npm run typecheck && npm run typecheck:worker",
+    "test": "node tests/storage.test.cjs && node src/i18n/index.test.cjs && node worker/tests.cjs",
+    "test:browser": "node tests/standalone-browser.mjs",
+    "typecheck:worker": "tsc --noEmit -p worker/tsconfig.json",
+    "build": "npm run check && npm run export:web",
+    "preview": "wrangler dev --ip 127.0.0.1 --port 8793",
+    "deploy": "npm run build && wrangler deploy",
     "export:web": "expo export --platform web",
     "build:android:preview": "npx eas-cli build --platform android --profile preview",
     "build:ios:preview": "npx eas-cli build --platform ios --profile preview",
@@ -40,7 +46,12 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
-    "typescript": "~5.9.2"
+    "playwright": "1.58.2",
+    "typescript": "~5.9.2",
+    "wrangler": "4.129.1"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   },
   "private": true
 }

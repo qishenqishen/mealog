@@ -1,13 +1,16 @@
-import { Image, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useState } from 'react';
+import { Image, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import type { MonthKey, Season } from '../utils/season';
 import {
   getMonthKey,
   getMonthKeyForDate,
+  getMonthLabel,
   getRepresentativeMonthForSeason,
 } from '../utils/season';
 import { getHeroAsset, getHeroAspectRatio } from '../utils/heroAssets';
 import { getHeroHotspots, type HeroHotspot } from '../utils/heroHotspots';
 import { colors } from '../theme';
+import { useI18n } from '../i18n';
 
 interface Props {
   month?: MonthKey;
@@ -36,7 +39,9 @@ export default function HeroIllustration({
   onPlatePress,
   onChairPress,
 }: Props) {
+  const { t } = useI18n();
   const { width: screenW, height: screenH } = useWindowDimensions();
+  const [layoutWidth, setLayoutWidth] = useState<number>();
 
   const resolvedMonth = month
     ?? (monthIndex !== undefined
@@ -52,8 +57,8 @@ export default function HeroIllustration({
   const mealPress = onMealPress ?? onPlatePress;
   const peoplePress = onPeoplePress ?? onChairPress;
 
-  const containerH = screenH * 0.76;
-  const containerW = screenW;
+  const containerW = layoutWidth ?? (Platform.OS === 'web' ? Math.min(screenW, 460) : screenW);
+  const containerH = Math.min(screenH * 0.55, containerW / imageAspectRatio);
 
   // Compute the actual rendered rect after contain scaling.
   const containerAspect = containerW / containerH;
@@ -82,12 +87,18 @@ export default function HeroIllustration({
   };
 
   return (
-    <View style={{ width: containerW, height: containerH }}>
+    <View
+      style={{ width: '100%', height: containerH }}
+      onLayout={(event) => {
+        const width = event.nativeEvent.layout.width;
+        if (width > 0) setLayoutWidth(width);
+      }}
+    >
       <Image
         source={source}
         style={{ width: containerW, height: containerH }}
         resizeMode="contain"
-        accessibilityLabel={`Illustrated ${resolvedMonth} dining table memory scene`}
+        accessibilityLabel={t('Illustrated {month} dining table memory scene', { month: t(getMonthLabel(resolvedMonth)) })}
       />
 
       {/* Meal marker */}
@@ -95,7 +106,7 @@ export default function HeroIllustration({
         <Pressable
           onPress={mealPress}
           hitSlop={10}
-          accessibilityLabel={hotspots.meal.accessibilityLabel}
+          accessibilityLabel={t('Add a meal from the {month} table', { month: t(getMonthLabel(resolvedMonth)).toLowerCase() })}
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.marker,
@@ -116,7 +127,7 @@ export default function HeroIllustration({
         <Pressable
           onPress={peoplePress}
           hitSlop={10}
-          accessibilityLabel={hotspots.people.accessibilityLabel}
+          accessibilityLabel={t('Remember who was around the {month} table', { month: t(getMonthLabel(resolvedMonth)).toLowerCase() })}
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.marker,

@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useI18n } from '../i18n';
+import { useRef, useState } from 'react';
 import {
   Alert,
   Image,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,6 +19,7 @@ import { saveSharedMealPhoto } from '../storage';
 import { colors, shadow } from '../theme';
 import { generateId } from '../utils/id';
 import PersonAvatar from './PersonAvatar';
+import LoadState from './LoadState';
 import { requestCameraPermission, requestPhotosPermission } from '../services/permissions';
 
 function notify(message: string) {
@@ -41,18 +44,23 @@ export default function SharedPhotoUploader({
 }: {
   mealId?: string;
   people: PersonProfile[];
-  onSaved?: (photo: SharedMealPhoto) => void;
+  onSaved?: (photo: SharedMealPhoto) => Promise<void> | void;
 }) {
+  const { t } = useI18n();
+  const draftId = useRef(generateId());
   const [editorOpen, setEditorOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | undefined>();
   const [caption, setCaption] = useState('');
   const [taggedPersonIds, setTaggedPersonIds] = useState<string[]>([]);
   const [isCover, setIsCover] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
 
   const pickPhoto = async (source: 'camera' | 'library') => {
+    setError(undefined);
+    try {
     if (!mealId) {
-      notify('Save the meal first, then add a photograph together.');
+      notify(t('Save the meal first, then add a photograph together.'));
       return;
     }
 
@@ -61,7 +69,7 @@ export default function SharedPhotoUploader({
       : await requestPhotosPermission();
 
     if (!permission.granted) {
-      notify(permission.message ?? 'Photo permission is needed only if you choose to add a shared photograph.');
+      notify(t(permission.message ?? 'Photo permission is needed only if you choose to add a shared photograph.'));
       return;
     }
 
@@ -80,19 +88,25 @@ export default function SharedPhotoUploader({
       });
 
     if (!result.canceled) {
+      draftId.current = generateId();
       setImageUrl(result.assets[0]?.uri);
       setTaggedPersonIds(people.map((person) => person.id));
       setEditorOpen(true);
     }
+    } catch {
+      setError('Could not open photos. Please try again.');
+    }
   };
 
   const handleSave = async () => {
-    if (!mealId || !imageUrl) return;
+    if (saving || !mealId || !imageUrl) return;
 
     setSaving(true);
+    setError(undefined);
     try {
       const saved = await saveSharedMealPhoto({
-        id: generateId(),
+        id: draftId.current,
+        origin: 'user',
         mealId,
         imageUrl,
         caption: caption.trim() || undefined,
@@ -101,12 +115,14 @@ export default function SharedPhotoUploader({
         isCover,
         createdAt: new Date().toISOString(),
       });
-      onSaved?.(saved);
+      await onSaved?.(saved);
       setEditorOpen(false);
       setImageUrl(undefined);
       setCaption('');
       setTaggedPersonIds([]);
       setIsCover(false);
+    } catch {
+      setError('Could not save this photo. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -115,36 +131,41 @@ export default function SharedPhotoUploader({
   return (
     <>
       <View style={styles.actions}>
-        <Pressable style={styles.photoButton} onPress={() => pickPhoto('library')}>
-          <Text style={styles.photoButtonText}>Choose photo together</Text>
+        <Pressable accessibilityRole="button" style={styles.photoButton} onPress={() => pickPhoto('library')}>
+          <Text style={styles.photoButtonText}>{t("Choose photo together")}</Text>
         </Pressable>
-        <Pressable style={styles.photoButton} onPress={() => pickPhoto('camera')}>
-          <Text style={styles.photoButtonText}>Take photo together</Text>
+        <Pressable accessibilityRole="button" style={styles.photoButton} onPress={() => pickPhoto('camera')}>
+          <Text style={styles.photoButtonText}>{t("Take photo together")}</Text>
         </Pressable>
       </View>
 
-      <Modal visible={editorOpen} transparent animationType="fade" onRequestClose={() => setEditorOpen(false)}>
+      {!editorOpen ? <LoadState error={error} /> : null}
+      <Modal visible={editorOpen} transparent animationType="fade" onRequestClose={() => !saving && setEditorOpen(false)}>
         <View style={styles.overlay}>
           <View style={styles.sheet}>
-            <Text style={styles.kicker}>Together at this table</Text>
-            <Text style={styles.title}>Add a photo together</Text>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <Text style={styles.kicker}>{t("Together at this table")}</Text>
+            <Text style={styles.title}>{t("Add a photo together")}</Text>
 
             {imageUrl ? <Image source={{ uri: imageUrl }} style={styles.preview} /> : null}
 
             <TextInput
               value={caption}
               onChangeText={setCaption}
-              placeholder="Caption for this table memory..."
+              placeholder={t("Caption for this table memory...")}
               placeholderTextColor="rgba(141, 123, 102, 0.52)"
               style={styles.input}
             />
 
-            <Text style={styles.label}>Tag people in this photo</Text>
+            <Text style={styles.label}>{t("Tag people in this photo")}</Text>
             <View style={styles.peopleGrid}>
+              {people.length === 0 ? <Text style={styles.label}>{t('No one has taken a seat yet.')}</Text> : null}
               {people.map((person) => {
                 const selected = taggedPersonIds.includes(person.id);
                 return (
                   <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected }}
                     key={person.id}
                     style={[styles.personChip, selected && styles.personChipSelected]}
                     onPress={() => setTaggedPersonIds((current) => toggleValue(current, person.id))}
@@ -162,27 +183,31 @@ export default function SharedPhotoUploader({
             </View>
 
             <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: isCover }}
               style={[styles.coverRow, isCover && styles.coverRowActive]}
               onPress={() => setIsCover((current) => !current)}
             >
               <View style={[styles.coverDot, isCover && styles.coverDotActive]} />
               <Text style={[styles.coverText, isCover && styles.coverTextActive]}>
-                Use as this meal's cover photo
-              </Text>
+                {t("Use as this meal's cover photo")}</Text>
             </Pressable>
 
+            <LoadState error={error} />
             <View style={styles.footer}>
-              <Pressable style={styles.cancelButton} onPress={() => setEditorOpen(false)}>
-                <Text style={styles.cancelText}>Cancel</Text>
+              <Pressable accessibilityRole="button" style={styles.cancelButton} onPress={() => setEditorOpen(false)} disabled={saving}>
+                <Text style={styles.cancelText}>{t("Cancel")}</Text>
               </Pressable>
               <Pressable
+                accessibilityRole="button"
                 style={[styles.saveButton, saving && styles.saveButtonDisabled]}
                 disabled={saving}
                 onPress={handleSave}
               >
-                <Text style={styles.saveText}>{saving ? 'Saving...' : 'Save photo'}</Text>
+                <Text style={styles.saveText}>{saving ? t('Saving...') : t('Save photo')}</Text>
               </Pressable>
             </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -214,6 +239,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(62, 43, 33, 0.28)',
   },
   sheet: {
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 460 : undefined,
+    alignSelf: 'center',
+    maxHeight: '90%',
     borderRadius: 28,
     paddingHorizontal: 18,
     paddingTop: 20,

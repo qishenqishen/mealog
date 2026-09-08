@@ -1,0 +1,13 @@
+{
+  "base": "https://mealog.qs2077.workers.dev",
+  "testedAt": "2026-09-08T02:18:08.993Z",
+  "results": [
+    {
+      "status": "PASS",
+      "test": "Only nearby art loads initially; every keepsake decodes after scrolling into view",
+      "initialRequests": 3,
+      "finalRequests": 50,
+      "stamps": 50
+    }
+  ]
+}

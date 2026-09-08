@@ -1,9 +1,11 @@
+import { useI18n } from '../../src/i18n';
 import { Tabs } from 'expo-router';
 import { Platform, StyleSheet } from 'react-native';
 import { TabIcon } from '../../src/components/TabIcon';
 import { colors } from '../../src/theme';
 
 export default function TabLayout() {
+  const { t } = useI18n();
   return (
     <Tabs
       screenOptions={{
@@ -29,35 +31,35 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: t('Home'),
           tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="archive"
         options={{
-          title: 'Archive',
+          title: t('Archive'),
           tabBarIcon: ({ focused }) => <TabIcon name="archive" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="add"
         options={{
-          title: 'Add',
+          title: t('Add'),
           tabBarIcon: ({ focused }) => <TabIcon name="add" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="insights"
         options={{
-          title: 'Insights',
+          title: t('Insights'),
           tabBarIcon: ({ focused }) => <TabIcon name="insights" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="collection"
         options={{
-          title: 'Collection',
+          title: t('Collection'),
           tabBarIcon: ({ focused }) => <TabIcon name="collection" focused={focused} />,
         }}
       />

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useI18n } from '../i18n';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  FlatList,
+  ScrollView,
   Pressable,
   StyleSheet,
   Text,
@@ -14,6 +15,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const ITEM_WIDTH = 44;
 const ITEM_MARGIN = 2;
 const TOTAL_ITEM_WIDTH = ITEM_WIDTH + ITEM_MARGIN * 2;
+const LIST_PADDING = 20;
 
 /** Produce YYYY-MM-DD from a Date. */
 function toDateKey(d: Date): string {
@@ -50,23 +52,26 @@ interface Props {
 // ── Component ───────────────────────────────────────────────
 
 export default function DateStrip({ selectedDate, onSelectDate, onTodayPress }: Props) {
-  const today = useRef(new Date()).current;
-  const items = useRef(buildDateRange(today)).current;
-  const todayKey = toDateKey(today);
+  const { t, locale } = useI18n();
+  const items = useMemo(() => buildDateRange(selectedDate), [selectedDate]);
+  const todayKey = toDateKey(new Date());
   const selectedKey = toDateKey(selectedDate);
-  const listRef = useRef<FlatList>(null);
+  const listRef = useRef<ScrollView>(null);
+  const [listWidth, setListWidth] = useState(0);
 
-  // Centre on selected date on mount.
-  const centreIndex = items.findIndex((i) => i.key === selectedKey);
+  const centerSelected = useCallback(() => {
+    const index = items.findIndex((item) => item.key === selectedKey);
+    if (index < 0 || listWidth <= 0) return;
+    listRef.current?.scrollTo({
+      x: Math.max(0, LIST_PADDING + TOTAL_ITEM_WIDTH * (index + 0.5) - listWidth / 2),
+      animated: false,
+    });
+  }, [items, listWidth, selectedKey]);
+
   useEffect(() => {
-    if (centreIndex >= 0) {
-      // Small delay so FlatList has laid out.
-      const t = setTimeout(() => {
-        listRef.current?.scrollToIndex({ index: centreIndex, animated: false, viewPosition: 0.5 });
-      }, 50);
-      return () => clearTimeout(t);
-    }
-  }, []); // only on mount
+    const frame = requestAnimationFrame(centerSelected);
+    return () => cancelAnimationFrame(frame);
+  }, [centerSelected]);
 
   const renderItem = useCallback(
     ({ item }: { item: (typeof items)[number] }) => {
@@ -74,6 +79,10 @@ export default function DateStrip({ selectedDate, onSelectDate, onTodayPress }: 
       const isToday = item.key === todayKey;
       return (
         <Pressable
+          key={item.key}
+          accessibilityRole="button"
+          accessibilityLabel={item.date.toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          accessibilityState={{ selected: isSelected }}
           style={styles.item}
           onPress={() => onSelectDate(item.date)}
         >
@@ -93,41 +102,40 @@ export default function DateStrip({ selectedDate, onSelectDate, onTodayPress }: 
               isToday && !isSelected && styles.weekdayToday,
             ]}
           >
-            {item.weekday}
+            {t(item.weekday)}
           </Text>
           {isSelected && <View style={styles.dot} />}
         </Pressable>
       );
     },
-    [selectedKey, todayKey, onSelectDate],
+    [selectedKey, todayKey, onSelectDate, t, locale],
   );
 
   const isToday = selectedKey === todayKey;
 
   return (
     <View style={styles.container}>
-      <FlatList
+      <ScrollView
         ref={listRef}
-        data={items}
+        style={styles.list}
         horizontal
+        onLayout={(event) => setListWidth(event.nativeEvent.layout.width)}
+        onContentSizeChange={centerSelected}
         showsHorizontalScrollIndicator={false}
-        keyExtractor={(i) => i.key}
-        renderItem={renderItem}
-        getItemLayout={(_, index) => ({
-          length: TOTAL_ITEM_WIDTH,
-          offset: TOTAL_ITEM_WIDTH * index,
-          index,
-        })}
         contentContainerStyle={styles.listContent}
-      />
+      >
+        {items.map((item) => renderItem({ item }))}
+      </ScrollView>
 
       {/* TOD pill — jumps back to today */}
       <Pressable
         style={[styles.todPill, isToday && styles.todPillMuted]}
         onPress={onTodayPress}
+        accessibilityRole="button"
+        accessibilityLabel={t('Today')}
         hitSlop={8}
       >
-        <Text style={[styles.todText, isToday && styles.todTextMuted]}>TOD</Text>
+        <Text style={[styles.todText, isToday && styles.todTextMuted]}>{t("TOD")}</Text>
       </Pressable>
     </View>
   );
@@ -139,13 +147,21 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
+    width: '100%',
+    minWidth: 0,
+  },
+  list: {
+    flex: 1,
+    minWidth: 0,
+    height: 46,
   },
   listContent: {
-    paddingLeft: 20,
+    paddingLeft: LIST_PADDING,
     paddingRight: 8,
   },
   item: {
     width: ITEM_WIDTH,
+    flexShrink: 0,
     marginHorizontal: ITEM_MARGIN,
     alignItems: 'center',
     paddingVertical: 4,

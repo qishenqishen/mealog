@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Image,
+  Platform,
   StyleSheet,
   View,
 } from 'react-native';
@@ -22,6 +23,7 @@ type AchievementStampProps = {
   locked?: boolean;
   state?: AchievementStampState;
   progressRatio?: number;
+  deferLoading?: boolean;
 };
 
 function getVisualState({
@@ -116,12 +118,32 @@ export default function AchievementStamp({
   locked = false,
   state,
   progressRatio = 0,
+  deferLoading = false,
 }: AchievementStampProps) {
   const visualState = getVisualState({ locked, state });
   const pulse = useRef(new Animated.Value(0)).current;
+  const container = useRef<View>(null);
+  const [loadArt, setLoadArt] = useState(!deferLoading || Platform.OS !== 'web');
 
   useEffect(() => {
-    if (visualState !== 'newly_unlocked') {
+    if (loadArt) return;
+    if (!deferLoading || typeof IntersectionObserver === 'undefined') {
+      setLoadArt(true);
+      return;
+    }
+    // Keep the stamp's dimensions while offscreen artwork waits its turn.
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setLoadArt(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: '240px 0px' });
+    if (container.current) observer.observe(container.current as unknown as Element);
+    return () => observer.disconnect();
+  }, [deferLoading, loadArt]);
+
+  useEffect(() => {
+    if (!loadArt || visualState !== 'newly_unlocked') {
       pulse.setValue(0);
       return;
     }
@@ -142,7 +164,7 @@ export default function AchievementStamp({
     );
     animation.start();
     return () => animation.stop();
-  }, [pulse, visualState]);
+  }, [pulse, visualState, loadArt]);
 
   const haloScale = pulse.interpolate({
     inputRange: [0, 1],
@@ -158,7 +180,7 @@ export default function AchievementStamp({
   const showNew = visualState === 'newly_unlocked';
 
   return (
-    <View style={[styles.wrap, { width: size + 20, height: size + 20 }]}>
+    <View ref={container} style={[styles.wrap, { width: size + 20, height: size + 20 }]}>
       {showNew ? (
         <Animated.View
           pointerEvents="none"
@@ -191,7 +213,7 @@ export default function AchievementStamp({
           visualState === 'in_progress' && styles.paperProgress,
         ]}
       >
-        <Image
+        {loadArt ? <Image
           source={getKeepsakeArt(iconKey)}
           resizeMode="contain"
           style={[
@@ -203,7 +225,7 @@ export default function AchievementStamp({
             showLocked && styles.artLocked,
             visualState === 'in_progress' && styles.artProgress,
           ]}
-        />
+        /> : null}
         {showLocked ? <View pointerEvents="none" style={styles.paperVeil} /> : null}
         {showLocked ? <LockMark size={size} /> : null}
       </View>

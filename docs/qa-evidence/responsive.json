@@ -1,0 +1,220 @@
+{
+  "base": "https://mealog.qs2077.workers.dev",
+  "testedAt": "2026-09-08T01:55:14.351Z",
+  "results": [
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 320,
+        "height": 568
+      },
+      "route": "/",
+      "app": {
+        "x": 0,
+        "y": 0,
+        "width": 320,
+        "height": 568
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 320,
+        "height": 568
+      },
+      "route": "/add",
+      "app": {
+        "x": 0,
+        "y": 0,
+        "width": 320,
+        "height": 568
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 320,
+        "height": 568
+      },
+      "route": "/archive",
+      "app": {
+        "x": 0,
+        "y": 0,
+        "width": 320,
+        "height": 568
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 320,
+        "height": 568
+      },
+      "route": "/insights",
+      "app": {
+        "x": 0,
+        "y": 0,
+        "width": 320,
+        "height": 568
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 320,
+        "height": 568
+      },
+      "route": "/collection",
+      "app": {
+        "x": 0,
+        "y": 0,
+        "width": 320,
+        "height": 568
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "route": "/",
+      "app": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "route": "/add",
+      "app": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "route": "/archive",
+      "app": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "route": "/insights",
+      "app": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "route": "/collection",
+      "app": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/",
+      "app": {
+        "x": 490,
+        "y": 0,
+        "width": 460,
+        "height": 900
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/add",
+      "app": {
+        "x": 490,
+        "y": 0,
+        "width": 460,
+        "height": 900
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/archive",
+      "app": {
+        "x": 490,
+        "y": 0,
+        "width": 460,
+        "height": 900
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/insights",
+      "app": {
+        "x": 490,
+        "y": 0,
+        "width": 460,
+        "height": 900
+      }
+    },
+    {
+      "status": "PASS",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "route": "/collection",
+      "app": {
+        "x": 490,
+        "y": 0,
+        "width": 460,
+        "height": 900
+      }
+    },
+    {
+      "status": "PASS",
+      "test": "Reduced-height focused form can scroll the save control above the fixed navigation; simulated viewport, not a physical keyboard test"
+    }
+  ]
+}

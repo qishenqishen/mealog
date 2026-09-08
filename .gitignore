@@ -32,6 +32,12 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
+.env.*
+!.env.example
+.dev.vars*
+.wrangler/
+/artifacts/
 
 # local presentation/reference exports
 *.fig

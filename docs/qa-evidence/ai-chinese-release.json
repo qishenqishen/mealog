@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "month": "2026-09",
+  "locale": "zh",
+  "provider": "cloudflare_workers_ai",
+  "model": "@cf/meta/llama-3.1-8b-instruct-fast",
+  "generatedAt": "2026-09-08T02:16:56.760Z",
+  "metrics": {
+    "mealCount": 3,
+    "daysLogged": 3,
+    "photoCount": 3,
+    "noteCount": 3,
+    "byType": {
+      "breakfast": 1,
+      "lunch": 1,
+      "dinner": 1,
+      "snack": 0,
+      "treat": 0
+    },
+    "byMood": {
+      "peaceful": 1,
+      "everyday": 1,
+      "nostalgic": 0,
+      "healing": 0,
+      "heartfelt": 1,
+      "overwhelming": 0,
+      "celebratory": 0
+    },
+    "byCompany": {
+      "just-me": 1,
+      "family-table": 1,
+      "shared-with-friend": 0,
+      "work-lunch": 1,
+      "celebration-gathering": 0,
+      "new-encounter": 0
+    }
+  },
+  "narrative": {
+    "title": "平常的午餐、温馨的晚餐、安静的早餐",
+    "observations": [
+      {
+        "text": "你和Kai互换了一口饭菜，讨论了周末计划。",
+        "mealIds": [
+          "demo-meal-current-03"
+        ]
+      },
+      {
+        "text": "你和家人分享了故事，直到餐盘空了。",
+        "mealIds": [
+          "demo-meal-current-05"
+        ]
+      },
+      {
+        "text": "你在窗口吃了蓝莓吐司，写了一个清单。",
+        "mealIds": [
+          "demo-meal-current-01"
+        ]
+      }
+    ]
+  },
+  "evidenceMealIds": [
+    "demo-meal-current-03",
+    "demo-meal-current-05",
+    "demo-meal-current-01"
+  ]
+}

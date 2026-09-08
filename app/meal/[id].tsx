@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useI18n, translate, type Locale } from '../../src/i18n';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -10,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { deleteMeal, getMealById } from '../../src/storage';
 import {
@@ -21,6 +22,7 @@ import {
 } from '../../src/types';
 import { colors, shadow } from '../../src/theme';
 import MealCompanySection from '../../src/components/MealCompanySection';
+import LoadState from '../../src/components/LoadState';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -54,10 +56,10 @@ const PEOPLE_TAG_LABELS = Object.fromEntries(
   DEFAULT_COMPANIONSHIP_TAGS.map((tag) => [tag.id, tag.label]),
 ) as Record<string, string>;
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string, locale: Locale): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
-  return date.toLocaleDateString('en-US', {
+  return date.toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -71,22 +73,22 @@ function getMoodTags(meal: MealEntry): MoodTag[] {
 }
 
 function getPeopleLabels(meal: MealEntry): string[] {
-  return meal.peopleTags.map((tag) => PEOPLE_TAG_LABELS[tag] ?? tag);
+  return meal.peopleTags.map((tag) => PEOPLE_TAG_LABELS[tag] ? translate(PEOPLE_TAG_LABELS[tag]) : tag);
 }
 
 /** Cross-platform confirm dialog (Alert.alert doesn't work on web). */
 function confirmDelete(onConfirm: () => void) {
   if (Platform.OS === 'web') {
     // eslint-disable-next-line no-restricted-globals
-    const yes = confirm('Delete this meal? This memory will be removed from your archive.');
+    const yes = confirm(translate('Delete this meal? This memory will be removed from your archive.'));
     if (yes) onConfirm();
   } else {
     Alert.alert(
-      'Delete this meal?',
-      'This memory will be removed from your archive.',
+      translate('Delete this meal?'),
+      translate('This memory will be removed from your archive.'),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: onConfirm },
+        { text: translate('Cancel'), style: 'cancel' },
+        { text: translate('Delete'), style: 'destructive', onPress: onConfirm },
       ],
     );
   }
@@ -103,15 +105,15 @@ function Chip({ label }: { label: string }) {
 }
 
 function PhotoFallback({ mealType }: { mealType: MealType }) {
+  const { t, locale } = useI18n();
   return (
     <View style={styles.photoFallback}>
       <View style={styles.fallbackPlate}>
         <View style={styles.fallbackPlateInner} />
       </View>
-      <Text style={styles.fallbackInitial}>{MEAL_TYPE_INITIALS[mealType]}</Text>
+      <Text style={styles.fallbackInitial}>{t(MEAL_TYPE_INITIALS[mealType])}</Text>
       <Text style={styles.fallbackCaption}>
-        {MEAL_TYPE_LABELS[mealType]} memory
-      </Text>
+        {t('{meal} memory', { meal: t(MEAL_TYPE_LABELS[mealType]) })}</Text>
     </View>
   );
 }
@@ -133,29 +135,40 @@ function SeatMark({ label }: { label: string }) {
 // ── Meal Detail Screen ──────────────────────────────────────
 
 export default function MealDetailScreen() {
+  const { t, locale } = useI18n();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const goBack = () => router.canGoBack() ? router.back() : router.replace('/');
   const [meal, setMeal] = useState<MealEntry | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
 
-  const loadMeal = useCallback(() => {
-    if (!id) return;
+  const loadMeal = useCallback(async () => {
+    if (!id) { setLoading(false); return; }
     setLoading(true);
-    getMealById(id).then((m) => {
-      setMeal(m ?? null);
+    setError(undefined);
+    try {
+      setMeal((await getMealById(id)) ?? null);
+    } catch {
+      setError('Could not load this memory.');
+    } finally {
       setLoading(false);
-    });
+    }
   }, [id]);
 
-  useEffect(() => {
-    loadMeal();
-  }, [loadMeal]);
+  useFocusEffect(useCallback(() => {
+    void loadMeal();
+  }, [loadMeal]));
 
   const handleDelete = () => {
     if (!meal) return;
     confirmDelete(async () => {
-      await deleteMeal(meal.id);
-      router.back();
+      try {
+        await deleteMeal(meal.id);
+        goBack();
+      } catch {
+        setError('Could not delete this memory. Please try again.');
+      }
     });
   };
 
@@ -165,13 +178,13 @@ export default function MealDetailScreen() {
   };
 
   const moodTags = useMemo(() => (meal ? getMoodTags(meal) : []), [meal]);
-  const peopleLabels = useMemo(() => (meal ? getPeopleLabels(meal) : []), [meal]);
+  const peopleLabels = useMemo(() => (meal ? getPeopleLabels(meal) : []), [meal, locale]);
 
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <Text style={styles.loadingText}>Opening this memory...</Text>
+          <Text style={styles.loadingText}>{t("Opening this memory...")}</Text>
         </View>
       </SafeAreaView>
     );
@@ -181,9 +194,9 @@ export default function MealDetailScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <Text style={styles.loadingText}>This meal could not be found.</Text>
-          <Pressable style={styles.notFoundBack} onPress={() => router.back()}>
-            <Text style={styles.notFoundBackText}>Back to the table</Text>
+          {error ? <LoadState error={error} onRetry={loadMeal} /> : <Text style={styles.loadingText}>{t("This meal could not be found.")}</Text>}
+          <Pressable accessibilityRole="button" style={styles.notFoundBack} onPress={goBack}>
+            <Text style={styles.notFoundBackText}>{t("Back to the table")}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -191,7 +204,7 @@ export default function MealDetailScreen() {
   }
 
   const location = meal.location ?? meal.locationText;
-  const title = meal.title || MEAL_TYPE_LABELS[meal.mealType];
+  const title = meal.title || t(MEAL_TYPE_LABELS[meal.mealType]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -200,14 +213,15 @@ export default function MealDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.topBar}>
-          <Pressable style={styles.navButton} onPress={() => router.back()}>
-            <Text style={styles.navButtonText}>Back</Text>
+          <Pressable accessibilityRole="button" style={styles.navButton} onPress={goBack}>
+            <Text style={styles.navButtonText}>{t("Back")}</Text>
           </Pressable>
-          <Pressable style={styles.navButton} onPress={handleEdit}>
-            <Text style={styles.navButtonText}>Edit</Text>
+          <Pressable accessibilityRole="button" style={styles.navButton} onPress={handleEdit}>
+            <Text style={styles.navButtonText}>{t("Edit")}</Text>
           </Pressable>
         </View>
 
+        <LoadState error={error} onRetry={loadMeal} />
         <View style={styles.memoryPage}>
           <View style={styles.photoCard}>
             {meal.photoUri ? (
@@ -234,9 +248,10 @@ export default function MealDetailScreen() {
           </View>
 
           <View style={styles.titleBlock}>
-            <Text style={styles.mealType}>{MEAL_TYPE_LABELS[meal.mealType]}</Text>
+            <Text style={styles.mealType}>{t(MEAL_TYPE_LABELS[meal.mealType])}</Text>
+            {meal.origin === 'sample' ? <Text style={styles.mealType}>{t('Sample memory')}</Text> : null}
             <Text style={styles.title}>{title}</Text>
-            <Text style={styles.date}>{formatDate(meal.date)}</Text>
+            <Text style={styles.date}>{formatDate(meal.date, locale)}</Text>
           </View>
 
           <View style={styles.metaCluster}>
@@ -253,15 +268,15 @@ export default function MealDetailScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Emotion Tag</Text>
+            <Text style={styles.sectionTitle}>{t("Emotion Tag")}</Text>
             {moodTags.length > 0 ? (
               <View style={styles.chipRow}>
                 {moodTags.map((tag) => (
-                  <Chip key={tag} label={MOOD_LABELS[tag] ?? tag} />
+                  <Chip key={tag} label={t(MOOD_LABELS[tag] ?? tag)} />
                 ))}
               </View>
             ) : (
-              <Text style={styles.emptyLine}>No emotion tag was added.</Text>
+              <Text style={styles.emptyLine}>{t("No emotion tag was added.")}</Text>
             )}
           </View>
 
@@ -269,7 +284,7 @@ export default function MealDetailScreen() {
 
           {peopleLabels.length > 0 ? (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Table Context</Text>
+              <Text style={styles.sectionTitle}>{t("Table Context")}</Text>
               <View style={styles.chipRow}>
                 {peopleLabels.map((label) => (
                   <Chip key={label} label={label} />
@@ -279,26 +294,26 @@ export default function MealDetailScreen() {
           ) : null}
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Memory Note</Text>
+            <Text style={styles.sectionTitle}>{t("Memory Note")}</Text>
             {meal.note ? (
               <Text style={styles.noteText}>{meal.note}</Text>
             ) : (
               <Text style={styles.emptyLine}>
-                This memory was kept without extra words.
-              </Text>
+                {t("This memory was kept without extra words.")}</Text>
             )}
           </View>
         </View>
 
         <View style={styles.actionArea}>
           <Pressable
+            accessibilityRole="button"
             style={({ pressed }) => [
               styles.deleteButton,
               pressed && styles.deleteButtonPressed,
             ]}
             onPress={handleDelete}
           >
-            <Text style={styles.deleteButtonText}>Delete this memory</Text>
+            <Text style={styles.deleteButtonText}>{t("Delete this memory")}</Text>
           </Pressable>
         </View>
       </ScrollView>

@@ -1,0 +1,214 @@
+{
+  "origin": "https://mealog.qs2077.workers.dev",
+  "generatedAt": "2026-09-08T02:01:23.621Z",
+  "results": [
+    "PASS real English report, exact provider/model and valid evidence",
+    "PASS reload uses cached report without AI request",
+    "PASS newly recorded meal changes real report and metrics, linked in evidence",
+    "PASS real Chinese generation; language switch alone does not call AI",
+    "PASS fourth network attempt rejected with 429; previous report preserved",
+    "PASS full Chrome process restart preserves language, AI cache, meal and managed photo"
+  ],
+  "reports": [
+    {
+      "version": 1,
+      "month": "2026-09",
+      "locale": "en",
+      "provider": "cloudflare_workers_ai",
+      "model": "@cf/meta/llama-3.1-8b-instruct-fast",
+      "generatedAt": "2026-09-08T02:01:17.872Z",
+      "metrics": {
+        "mealCount": 3,
+        "daysLogged": 3,
+        "photoCount": 3,
+        "noteCount": 3,
+        "byType": {
+          "breakfast": 1,
+          "lunch": 1,
+          "dinner": 1,
+          "snack": 0,
+          "treat": 0
+        },
+        "byMood": {
+          "peaceful": 1,
+          "everyday": 1,
+          "nostalgic": 0,
+          "healing": 0,
+          "heartfelt": 1,
+          "overwhelming": 0,
+          "celebratory": 0
+        },
+        "byCompany": {
+          "just-me": 1,
+          "family-table": 1,
+          "shared-with-friend": 0,
+          "work-lunch": 1,
+          "celebration-gathering": 0,
+          "new-encounter": 0
+        }
+      },
+      "narrative": {
+        "title": "September Reflections",
+        "observations": [
+          {
+            "text": "The toast looked almost too gentle to touch.",
+            "mealIds": [
+              "demo-meal-current-01"
+            ]
+          },
+          {
+            "text": "The meal felt softer than the calendar around it.",
+            "mealIds": [
+              "demo-meal-current-03"
+            ]
+          },
+          {
+            "text": "The conversation lasted longer than the pasta.",
+            "mealIds": [
+              "demo-meal-current-05"
+            ]
+          }
+        ]
+      },
+      "evidenceMealIds": [
+        "demo-meal-current-03",
+        "demo-meal-current-05",
+        "demo-meal-current-01"
+      ]
+    },
+    {
+      "version": 1,
+      "month": "2026-09",
+      "locale": "en",
+      "provider": "cloudflare_workers_ai",
+      "model": "@cf/meta/llama-3.1-8b-instruct-fast",
+      "generatedAt": "2026-09-08T02:01:20.239Z",
+      "metrics": {
+        "mealCount": 4,
+        "daysLogged": 3,
+        "photoCount": 4,
+        "noteCount": 4,
+        "byType": {
+          "breakfast": 1,
+          "lunch": 2,
+          "dinner": 1,
+          "snack": 0,
+          "treat": 0
+        },
+        "byMood": {
+          "peaceful": 1,
+          "everyday": 1,
+          "nostalgic": 0,
+          "healing": 0,
+          "heartfelt": 2,
+          "overwhelming": 0,
+          "celebratory": 0
+        },
+        "byCompany": {
+          "just-me": 1,
+          "family-table": 1,
+          "shared-with-friend": 0,
+          "work-lunch": 1,
+          "celebration-gathering": 0,
+          "new-encounter": 0
+        }
+      },
+      "narrative": {
+        "title": "September Reflections",
+        "observations": [
+          {
+            "text": "The toast looked almost too gentle to touch.",
+            "mealIds": [
+              "demo-meal-current-01"
+            ]
+          },
+          {
+            "text": "The meal felt softer than the calendar around it.",
+            "mealIds": [
+              "demo-meal-current-03"
+            ]
+          },
+          {
+            "text": "Amy made a tiny star-shaped dumpling, and you laughed about it.",
+            "mealIds": [
+              "3c689ce8-ae9e-40f3-b20a-a79d0ae399cd"
+            ]
+          }
+        ]
+      },
+      "evidenceMealIds": [
+        "demo-meal-current-03",
+        "demo-meal-current-05",
+        "3c689ce8-ae9e-40f3-b20a-a79d0ae399cd",
+        "demo-meal-current-01"
+      ]
+    },
+    {
+      "version": 1,
+      "month": "2026-09",
+      "locale": "zh",
+      "provider": "cloudflare_workers_ai",
+      "model": "@cf/meta/llama-3.1-8b-instruct-fast",
+      "generatedAt": "2026-09-08T02:01:21.297Z",
+      "metrics": {
+        "mealCount": 4,
+        "daysLogged": 3,
+        "photoCount": 4,
+        "noteCount": 4,
+        "byType": {
+          "breakfast": 1,
+          "lunch": 2,
+          "dinner": 1,
+          "snack": 0,
+          "treat": 0
+        },
+        "byMood": {
+          "peaceful": 1,
+          "everyday": 1,
+          "nostalgic": 0,
+          "healing": 0,
+          "heartfelt": 2,
+          "overwhelming": 0,
+          "celebratory": 0
+        },
+        "byCompany": {
+          "just-me": 1,
+          "family-table": 1,
+          "shared-with-friend": 0,
+          "work-lunch": 1,
+          "celebration-gathering": 0,
+          "new-encounter": 0
+        }
+      },
+      "narrative": {
+        "title": "平静的早晨",
+        "observations": [
+          {
+            "text": "你在窗口边吃了蓝莓吐司，感觉很平静。",
+            "mealIds": [
+              "demo-meal-current-01"
+            ]
+          },
+          {
+            "text": "你吃了一个工作日的碗饭，感觉比日历里软和。",
+            "mealIds": [
+              "demo-meal-current-03"
+            ]
+          },
+          {
+            "text": "你和家人一起吃了意面，谈话持续了比面条更久。",
+            "mealIds": [
+              "demo-meal-current-05"
+            ]
+          }
+        ]
+      },
+      "evidenceMealIds": [
+        "demo-meal-current-03",
+        "demo-meal-current-05",
+        "3c689ce8-ae9e-40f3-b20a-a79d0ae399cd",
+        "demo-meal-current-01"
+      ]
+    }
+  ]
+}

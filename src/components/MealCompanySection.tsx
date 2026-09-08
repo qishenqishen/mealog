@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useI18n, translate } from '../i18n';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -9,7 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 
 import type { MealCompanion, PersonProfile, SharedMealPhoto } from '../types';
 import {
@@ -22,11 +23,11 @@ import {
   setMealCompanions,
 } from '../storage';
 import { colors } from '../theme';
-import { getPersonDisplayName } from '../utils/people';
 import PersonAvatar from './PersonAvatar';
 import PeoplePickerSheet from './PeoplePickerSheet';
 import SharedPhotoUploader from './SharedPhotoUploader';
 import CreatePersonModal from './CreatePersonModal';
+import LoadState from './LoadState';
 
 function confirmAction(title: string, body: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
@@ -35,8 +36,8 @@ function confirmAction(title: string, body: string, onConfirm: () => void) {
     return;
   }
   Alert.alert(title, body, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Remove', style: 'destructive', onPress: onConfirm },
+    { text: translate('Cancel'), style: 'cancel' },
+    { text: translate('Remove'), style: 'destructive', onPress: onConfirm },
   ]);
 }
 
@@ -51,8 +52,9 @@ export default function MealCompanySection({
   onChanged,
 }: {
   mealId: string;
-  onChanged?: () => void;
+  onChanged?: () => Promise<void> | void;
 }) {
+  const { t } = useI18n();
   const router = useRouter();
   const [companions, setCompanions] = useState<MealCompanion[]>([]);
   const [people, setPeople] = useState<PersonProfile[]>([]);
@@ -62,21 +64,47 @@ export default function MealCompanySection({
   const [editingPhotoId, setEditingPhotoId] = useState<string | undefined>();
   const [captionDraft, setCaptionDraft] = useState('');
   const [tagDraft, setTagDraft] = useState<string[]>([]);
+  const [error, setError] = useState<string>();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const reload = useCallback(async () => {
-    const [nextCompanions, nextPeople, nextPhotos] = await Promise.all([
-      getMealCompanions(mealId),
-      getPeopleProfiles({ includeDeleted: true }),
-      getSharedMealPhotos(mealId),
-    ]);
-    setCompanions(nextCompanions);
-    setPeople(nextPeople);
-    setPhotos(nextPhotos);
+    setError(undefined);
+    setLoading(true);
+    try {
+      const [nextCompanions, nextPeople, nextPhotos] = await Promise.all([
+        getMealCompanions(mealId),
+        getPeopleProfiles({ includeDeleted: true }),
+        getSharedMealPhotos(mealId),
+      ]);
+      setCompanions(nextCompanions);
+      setPeople(nextPeople);
+      setPhotos(nextPhotos);
+    } catch {
+      setError('Could not load people.');
+    } finally {
+      setLoading(false);
+    }
   }, [mealId]);
 
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  useFocusEffect(useCallback(() => {
+    void reload();
+  }, [reload]));
+
+  const saveChange = async (action: () => Promise<unknown>) => {
+    if (saving) return;
+    setSaving(true);
+    setError(undefined);
+    try {
+      await action();
+      await reload();
+      await onChanged?.();
+    } catch {
+      setError('Could not save these changes. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const peopleById = useMemo(
     () => new Map(people.map((person) => [person.id, person])),
@@ -95,18 +123,14 @@ export default function MealCompanySection({
   const handleSavePeople = async (personIds: string[]) => {
     await setMealCompanions(mealId, personIds);
     await reload();
-    onChanged?.();
+    await onChanged?.();
   };
 
   const handleRemove = (personId: string) => {
     confirmAction(
-      'Remove from this meal?',
-      'This only removes the person from this meal. Their profile and other shared meals stay.',
-      async () => {
-        await removeMealCompanion(mealId, personId);
-        await reload();
-        onChanged?.();
-      },
+      t('Remove from this meal?'),
+      t('This only removes the person from this meal. Their profile and other shared meals stay.'),
+      () => { void saveChange(() => removeMealCompanion(mealId, personId)); },
     );
   };
 
@@ -117,25 +141,22 @@ export default function MealCompanySection({
   };
 
   const savePhotoEdit = async (photo: SharedMealPhoto) => {
-    await saveSharedMealPhoto({
-      ...photo,
-      caption: captionDraft.trim() || undefined,
-      taggedPersonIds: tagDraft,
+    await saveChange(async () => {
+      await saveSharedMealPhoto({
+        ...photo,
+        origin: 'user',
+        caption: captionDraft.trim() || undefined,
+        taggedPersonIds: tagDraft,
+      });
+      setEditingPhotoId(undefined);
     });
-    setEditingPhotoId(undefined);
-    await reload();
-    onChanged?.();
   };
 
   const handleDeletePhoto = (photoId: string) => {
     confirmAction(
-      'Delete shared photo?',
-      'This removes only this shared photograph from the meal.',
-      async () => {
-        await deleteSharedMealPhoto(photoId);
-        await reload();
-        onChanged?.();
-      },
+      t('Delete shared photo?'),
+      t('This removes only this shared photograph from the meal.'),
+      () => { void saveChange(() => deleteSharedMealPhoto(photoId)); },
     );
   };
 
@@ -143,22 +164,27 @@ export default function MealCompanySection({
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <View>
-          <Text style={styles.sectionTitle}>Company</Text>
-          <Text style={styles.sectionSubtitle}>Meal companions, not contacts.</Text>
+          <Text style={styles.sectionTitle}>{t("Company")}</Text>
+          <Text style={styles.sectionSubtitle}>{t("Meal companions, not contacts.")}</Text>
         </View>
-        <Pressable style={styles.addButton} onPress={() => setPickerOpen(true)}>
-          <Text style={styles.addButtonText}>+ Add person</Text>
+        <Pressable accessibilityRole="button" style={styles.addButton} onPress={() => setPickerOpen(true)}>
+          <Text style={styles.addButtonText}>{t("+ Add person")}</Text>
         </Pressable>
       </View>
 
+      <LoadState loading={loading} error={error} onRetry={reload} />
       {companions.length > 0 ? (
         <View style={styles.companionList}>
           {companions.map((companion) => {
             const person = peopleById.get(companion.personId);
-            const name = getPersonDisplayName(person, companion);
+            const name = (person?.deletedAt
+              ? companion.personNameSnapshot
+              : person?.nickname ?? person?.name ?? companion.personNameSnapshot) ?? t('Deleted person');
             return (
               <View key={companion.id} style={styles.companionRow}>
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={name}
                   disabled={!person}
                   onPress={() => person && router.push(`/people/${person.id}`)}
                 >
@@ -172,40 +198,41 @@ export default function MealCompanySection({
                 <View style={styles.companionTextWrap}>
                   <Text style={styles.companionName}>{name}</Text>
                   <Text style={styles.companionMeta}>
-                    {person?.deletedAt ? 'Deleted person' : person?.relationship ?? 'At this table'}
+                    {person?.deletedAt ? t('Deleted person') : t(person?.relationship ?? 'At this table')}
                   </Text>
                 </View>
                 {person && !person.deletedAt ? (
-                  <Pressable style={styles.linkButton} onPress={() => setEditingPerson(person)}>
-                    <Text style={styles.linkButtonText}>Edit person</Text>
+                  <Pressable accessibilityRole="button" style={styles.linkButton} onPress={() => setEditingPerson(person)}>
+                    <Text style={styles.linkButtonText}>{t("Edit person")}</Text>
                   </Pressable>
                 ) : null}
-                <Pressable style={styles.removeButton} onPress={() => handleRemove(companion.personId)}>
-                  <Text style={styles.removeButtonText}>Remove</Text>
+                <Pressable accessibilityRole="button" style={styles.removeButton} onPress={() => handleRemove(companion.personId)} disabled={saving}>
+                  <Text style={styles.removeButtonText}>{t("Remove")}</Text>
                 </Pressable>
               </View>
             );
           })}
         </View>
-      ) : (
+      ) : loading || error ? null : (
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyTitle}>Who was at the table?</Text>
+          <Text style={styles.emptyTitle}>{t("Who was at the table?")}</Text>
           <Text style={styles.emptyBody}>
-            Add someone you shared this meal with, or keep this meal as a solo memory.
-          </Text>
+            {t("Add someone you shared this meal with, or keep this meal as a solo memory.")}</Text>
         </View>
       )}
 
       <View style={styles.photoBlock}>
-        <Text style={styles.photoTitle}>Together at this table</Text>
+        <Text style={styles.photoTitle}>{t("Together at this table")}</Text>
         <SharedPhotoUploader
           mealId={mealId}
           people={companionPeople}
           onSaved={async () => {
             await reload();
-            onChanged?.();
+            await onChanged?.();
           }}
         />
+
+        {!loading && !error && photos.length === 0 ? <Text style={styles.emptyBody}>{t('No shared photographs yet.')}</Text> : null}
 
         {photos.map((photo) => {
           const editing = editingPhotoId === photo.id;
@@ -217,7 +244,7 @@ export default function MealCompanySection({
                   <TextInput
                     value={captionDraft}
                     onChangeText={setCaptionDraft}
-                    placeholder="Caption for this shared photo..."
+                    placeholder={t("Caption for this shared photo...")}
                     placeholderTextColor="rgba(141, 123, 102, 0.52)"
                     style={styles.captionInput}
                   />
@@ -226,6 +253,8 @@ export default function MealCompanySection({
                       const selected = tagDraft.includes(person.id);
                       return (
                         <Pressable
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: selected }}
                           key={person.id}
                           style={[styles.tagChip, selected && styles.tagChipActive]}
                           onPress={() => setTagDraft((current) => toggleValue(current, person.id))}
@@ -238,25 +267,25 @@ export default function MealCompanySection({
                     })}
                   </View>
                   <View style={styles.photoActions}>
-                    <Pressable style={styles.linkButton} onPress={() => setEditingPhotoId(undefined)}>
-                      <Text style={styles.linkButtonText}>Cancel</Text>
+                    <Pressable accessibilityRole="button" style={styles.linkButton} onPress={() => setEditingPhotoId(undefined)}>
+                      <Text style={styles.linkButtonText}>{t("Cancel")}</Text>
                     </Pressable>
-                    <Pressable style={styles.linkButton} onPress={() => savePhotoEdit(photo)}>
-                      <Text style={styles.linkButtonText}>Save caption</Text>
+                    <Pressable accessibilityRole="button" style={styles.linkButton} onPress={() => savePhotoEdit(photo)} disabled={saving}>
+                      <Text style={styles.linkButtonText}>{t("Save caption")}</Text>
                     </Pressable>
                   </View>
                 </View>
               ) : (
                 <View style={styles.photoMeta}>
                   <Text style={styles.photoCaption}>
-                    {photo.caption ?? 'A shared meal photograph'}
+                    {photo.caption ?? t('A shared meal photograph')}
                   </Text>
                   <View style={styles.photoActions}>
-                    <Pressable style={styles.linkButton} onPress={() => beginPhotoEdit(photo)}>
-                      <Text style={styles.linkButtonText}>Edit photo</Text>
+                    <Pressable accessibilityRole="button" style={styles.linkButton} onPress={() => beginPhotoEdit(photo)}>
+                      <Text style={styles.linkButtonText}>{t("Edit photo")}</Text>
                     </Pressable>
-                    <Pressable style={styles.removeButton} onPress={() => handleDeletePhoto(photo.id)}>
-                      <Text style={styles.removeButtonText}>Delete photo</Text>
+                    <Pressable accessibilityRole="button" style={styles.removeButton} onPress={() => handleDeletePhoto(photo.id)} disabled={saving}>
+                      <Text style={styles.removeButtonText}>{t("Delete photo")}</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -282,7 +311,7 @@ export default function MealCompanySection({
         onSaved={async () => {
           setEditingPerson(undefined);
           await reload();
-          onChanged?.();
+          await onChanged?.();
         }}
       />
     </View>

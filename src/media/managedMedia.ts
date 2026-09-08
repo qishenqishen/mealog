@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { Platform } from 'react-native';
+import { Image as NativeImage, Platform } from 'react-native';
 
 import type { ManagedMedia, MediaOwnerType, MediaStorageStatus } from '../types';
 import { generateId } from '../utils/id';
@@ -12,6 +12,19 @@ const WEB_DB_VERSION = 1;
 const WEB_STORE_NAME = 'media-blobs';
 const WEB_URI_PREFIX = 'indexeddb://mealog-media/';
 const NATIVE_MEDIA_ROOT = 'media';
+const objectUrls = new Map<string, Promise<string | undefined>>();
+const deletingWebKeys = new Set<string>();
+let mediaWrite: Promise<unknown> = Promise.resolve();
+
+function serializeMediaWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const result = mediaWrite.then(operation);
+  mediaWrite = result.catch(() => undefined);
+  return result;
+}
+
+function mediaError(action: string, error: unknown): Error {
+  return new Error(`${action} ${error instanceof Error ? error.message : String(error)}`);
+}
 
 type ImportImageInput = {
   sourceUri: string;
@@ -53,11 +66,10 @@ async function getStoredMedia(): Promise<ManagedMedia[]> {
 
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.map(normalizeManagedMedia).filter((item): item is ManagedMedia => item !== null)
-      : [];
+    if (!Array.isArray(parsed)) throw new Error('Expected a media list.');
+    return parsed.map(normalizeManagedMedia).filter((item): item is ManagedMedia => item !== null);
   } catch {
-    return [];
+    throw new Error('The saved media index could not be read.');
   }
 }
 
@@ -66,15 +78,14 @@ async function setStoredMedia(items: ManagedMedia[]): Promise<void> {
 }
 
 async function upsertMedia(record: ManagedMedia): Promise<ManagedMedia> {
-  const records = await getStoredMedia();
-  const index = records.findIndex((item) => item.id === record.id);
-  if (index >= 0) {
-    records[index] = record;
-  } else {
-    records.push(record);
-  }
-  await setStoredMedia(records);
-  return record;
+  return serializeMediaWrite(async () => {
+    const records = await getStoredMedia();
+    const index = records.findIndex((item) => item.id === record.id);
+    if (index >= 0) records[index] = record;
+    else records.push(record);
+    await setStoredMedia(records);
+    return record;
+  });
 }
 
 export async function getManagedMediaRecords(): Promise<ManagedMedia[]> {
@@ -141,7 +152,7 @@ function nativeDirectoryFor(input: ImportImageInput): string {
   if (!documentRoot) {
     throw new Error('Persistent document storage is not available on this platform.');
   }
-  return `${documentRoot}${NATIVE_MEDIA_ROOT}/${ownerFolder(input.ownerType, input.ownerId)}/`;
+  return `${documentRoot}${NATIVE_MEDIA_ROOT}/${ownerFolder(input.ownerType, encodeURIComponent(input.ownerId))}/`;
 }
 
 async function ensureDirectory(uri: string): Promise<void> {
@@ -164,9 +175,16 @@ function webKeyFromManagedUri(uri?: string): string | undefined {
 
 async function assertNativeFile(uri: string): Promise<void> {
   const info = await FileSystem.getInfoAsync(uri);
-  if (!info.exists) {
-    throw new Error('The imported media file could not be verified.');
+  if (!info.exists || info.isDirectory || !info.size || info.size <= 0) {
+    throw new Error('The image file is missing or empty.');
   }
+}
+
+async function nativeImageSize(uri: string): Promise<{ width: number; height: number }> {
+  await assertNativeFile(uri);
+  const size = await NativeImage.getSize(uri);
+  if (!(size.width > 0 && size.height > 0)) throw new Error('The image could not be decoded.');
+  return size;
 }
 
 function openWebDatabase(): Promise<IDBDatabase> {
@@ -184,45 +202,57 @@ function openWebDatabase(): Promise<IDBDatabase> {
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('Could not open media database.'));
+    request.onblocked = () => reject(new Error('The media database is blocked by another browser tab.'));
   });
 }
 
 async function putWebBlob(id: string, blob: Blob): Promise<void> {
   const db = await openWebDatabase();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(WEB_STORE_NAME, 'readwrite');
-    transaction.objectStore(WEB_STORE_NAME).put(blob, id);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error('Could not store media blob.'));
-  });
-  db.close();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(WEB_STORE_NAME, 'readwrite');
+      transaction.objectStore(WEB_STORE_NAME).put(blob, id);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error('Could not store media blob.'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('Storing the image was interrupted.'));
+    });
+  } finally { db.close(); }
 }
 
 async function getWebBlob(id: string): Promise<Blob | undefined> {
   const db = await openWebDatabase();
-  const blob = await new Promise<Blob | undefined>((resolve, reject) => {
-    const transaction = db.transaction(WEB_STORE_NAME, 'readonly');
-    const request = transaction.objectStore(WEB_STORE_NAME).get(id);
-    request.onsuccess = () => resolve(request.result as Blob | undefined);
-    request.onerror = () => reject(request.error ?? new Error('Could not read media blob.'));
-  });
-  db.close();
-  return blob;
+  try {
+    return await new Promise<Blob | undefined>((resolve, reject) => {
+      const transaction = db.transaction(WEB_STORE_NAME, 'readonly');
+      const request = transaction.objectStore(WEB_STORE_NAME).get(id);
+      transaction.oncomplete = () => resolve(request.result as Blob | undefined);
+      request.onerror = () => reject(request.error ?? new Error('Could not read media blob.'));
+      transaction.onerror = () => reject(transaction.error ?? new Error('Could not read media blob.'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('Reading the image was interrupted.'));
+    });
+  } finally { db.close(); }
 }
 
 async function deleteWebBlob(id: string): Promise<void> {
-  if (typeof indexedDB === 'undefined') return;
   const db = await openWebDatabase();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction(WEB_STORE_NAME, 'readwrite');
-    transaction.objectStore(WEB_STORE_NAME).delete(id);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error('Could not delete media blob.'));
-  });
-  db.close();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(WEB_STORE_NAME, 'readwrite');
+      transaction.objectStore(WEB_STORE_NAME).delete(id);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error('Could not delete media blob.'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('Deleting the image was interrupted.'));
+    });
+  } finally { db.close(); }
 }
 
 async function sourceUriToBlob(uri: string): Promise<Blob> {
+  const key = webKeyFromManagedUri(uri);
+  if (key) {
+    const blob = await getWebBlob(key);
+    if (!blob) throw new Error('The selected managed image is missing.');
+    return blob;
+  }
   const response = await fetch(uri);
   if (!response.ok) {
     throw new Error('The selected image could not be read.');
@@ -230,53 +260,85 @@ async function sourceUriToBlob(uri: string): Promise<Blob> {
   return response.blob();
 }
 
-async function createWebThumbnailBlob(blob: Blob): Promise<Blob> {
-  if (typeof document === 'undefined' || typeof createImageBitmap === 'undefined') {
-    return blob;
+async function decodeWebImage(blob: Blob) {
+  if (!(blob instanceof Blob) || blob.size <= 0) throw new Error('The selected image is empty.');
+  if (blob.type && !blob.type.toLowerCase().startsWith('image/')) {
+    throw new Error('The selected file is not an image.');
   }
-
-  try {
+  if (typeof createImageBitmap !== 'undefined') {
     const bitmap = await createImageBitmap(blob);
-    const maxSide = 520;
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    if (!(bitmap.width > 0 && bitmap.height > 0)) {
+      bitmap.close();
+      throw new Error('The selected image could not be decoded.');
+    }
+    return { image: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() };
+  }
+  if (typeof document === 'undefined') throw new Error('Image decoding is not available.');
+  const uri = URL.createObjectURL(blob);
+  try {
+    const image = document.createElement('img');
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('The selected image could not be decoded.'));
+      image.src = uri;
+    });
+    if (!(image.naturalWidth > 0 && image.naturalHeight > 0)) {
+      throw new Error('The selected image could not be decoded.');
+    }
+    return { image, width: image.naturalWidth, height: image.naturalHeight, close: () => undefined };
+  } finally { URL.revokeObjectURL(uri); }
+}
+
+async function createWebThumbnailBlob(blob: Blob) {
+  const decoded = await decodeWebImage(blob);
+  try {
+    const scale = Math.min(1, 520 / Math.max(decoded.width, decoded.height));
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.width = Math.max(1, Math.round(decoded.width * scale));
+    canvas.height = Math.max(1, Math.round(decoded.height * scale));
     const context = canvas.getContext('2d');
-    if (!context) return blob;
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close?.();
+    if (!context) throw new Error('The image thumbnail could not be created.');
+    context.drawImage(decoded.image, 0, 0, canvas.width, canvas.height);
 
     const thumbnail = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob(resolve, 'image/jpeg', 0.72);
     });
 
-    return thumbnail ?? blob;
-  } catch {
-    return blob;
-  }
+    if (!thumbnail?.size) throw new Error('The image thumbnail is empty.');
+    return { blob: thumbnail, width: decoded.width, height: decoded.height };
+  } finally { decoded.close(); }
 }
 
 async function createNativeThumbnail(
   sourceUri: string,
   directory: string,
   mediaId: string,
-): Promise<string | undefined> {
+  size: { width: number; height: number },
+): Promise<string> {
+  const thumbnailDirectory = `${directory}thumbnails/`;
+  await ensureDirectory(thumbnailDirectory);
+  const scale = Math.min(1, 520 / Math.max(size.width, size.height));
+  const result = await ImageManipulator.manipulateAsync(
+    sourceUri,
+    [{
+      resize: {
+        width: Math.max(1, Math.round(size.width * scale)),
+        height: Math.max(1, Math.round(size.height * scale)),
+      }
+    }],
+    { compress: 0.72, format: ImageManipulator.SaveFormat.JPEG },
+  );
+  const destination = `${thumbnailDirectory}${mediaId}.jpg`;
   try {
-    const thumbnailDirectory = `${directory}thumbnails/`;
-    await ensureDirectory(thumbnailDirectory);
-    const result = await ImageManipulator.manipulateAsync(
-      sourceUri,
-      [{ resize: { width: 520 } }],
-      { compress: 0.72, format: ImageManipulator.SaveFormat.JPEG },
-    );
-    const destination = `${thumbnailDirectory}${mediaId}.jpg`;
     await FileSystem.copyAsync({ from: result.uri, to: destination });
-    await assertNativeFile(destination);
-    return destination;
-  } catch {
-    return undefined;
+    const thumbnailSize = await nativeImageSize(destination);
+    if (Math.max(thumbnailSize.width, thumbnailSize.height) > 520) {
+      throw new Error('The image thumbnail is too large.');
+    }
+  } finally {
+    if (result.uri !== sourceUri) await FileSystem.deleteAsync(result.uri, { idempotent: true });
   }
+  return destination;
 }
 
 function makeRecord(
@@ -308,25 +370,30 @@ export async function importImageToManagedStore(input: ImportImageInput): Promis
     throw new Error('No image was selected.');
   }
 
-  if (isManagedMediaUri(sourceUri) && input.existingMediaId) {
-    const existing = await getManagedMediaById(input.existingMediaId);
-    if (existing) return existing;
-  }
+  if (input.existingMediaId) return assertManagedMediaReadable(input.existingMediaId);
 
-  const mediaId = input.existingMediaId ?? generateId();
+  const mediaId = generateId();
   const importing = makeRecord(input, mediaId, 'importing');
-  await upsertMedia(importing);
+  const createdUris: string[] = [];
+  let recordWriteAttempted = false;
 
   try {
     if (Platform.OS === 'web') {
       const blob = await sourceUriToBlob(sourceUri);
-      const thumbnailBlob = await createWebThumbnailBlob(blob);
+      const thumbnail = await createWebThumbnailBlob(blob);
       const thumbnailKey = `${mediaId}:thumbnail`;
       await putWebBlob(mediaId, blob);
-      await putWebBlob(thumbnailKey, thumbnailBlob);
-      return upsertMedia({
+      await putWebBlob(thumbnailKey, thumbnail.blob);
+      const persisted = await getWebBlob(mediaId);
+      if (!persisted || persisted.size !== blob.size) throw new Error('The image copy could not be verified.');
+      const decoded = await decodeWebImage(persisted);
+      decoded.close();
+      recordWriteAttempted = true;
+      return await upsertMedia({
         ...importing,
         mimeType: blob.type || importing.mimeType,
+        width: thumbnail.width,
+        height: thumbnail.height,
         localManagedUri: `${WEB_URI_PREFIX}${mediaId}`,
         thumbnailUri: `${WEB_URI_PREFIX}${thumbnailKey}`,
         storageStatus: 'stored_local',
@@ -334,9 +401,11 @@ export async function importImageToManagedStore(input: ImportImageInput): Promis
     }
 
     const mimeType = inferMimeType(sourceUri, input.mimeType);
+    if (!mimeType.toLowerCase().startsWith('image/')) throw new Error('The selected file is not an image.');
     const extension = extensionForMimeType(mimeType);
     const directory = nativeDirectoryFor(input);
     const destination = `${directory}${mediaId}.${extension}`;
+    createdUris.push(destination, `${directory}thumbnails/${mediaId}.jpg`);
     await ensureDirectory(directory);
 
     if (sourceUri.startsWith('data:')) {
@@ -346,26 +415,59 @@ export async function importImageToManagedStore(input: ImportImageInput): Promis
         encoding: FileSystem.EncodingType.Base64,
       });
     } else if (isRemoteUri(sourceUri)) {
-      await FileSystem.downloadAsync(sourceUri, destination);
+      const response = await FileSystem.downloadAsync(sourceUri, destination);
+      if (response.status < 200 || response.status >= 300) throw new Error('The selected image could not be downloaded.');
     } else {
       await FileSystem.copyAsync({ from: sourceUri, to: destination });
     }
 
-    await assertNativeFile(destination);
-    const thumbnailUri = await createNativeThumbnail(destination, directory, mediaId);
-    return upsertMedia({
+    const size = await nativeImageSize(destination);
+    const thumbnailUri = await createNativeThumbnail(destination, directory, mediaId, size);
+    recordWriteAttempted = true;
+    return await upsertMedia({
       ...importing,
+      ...size,
       localManagedUri: destination,
-      thumbnailUri: thumbnailUri ?? destination,
+      thumbnailUri,
       storageStatus: 'stored_local',
     });
   } catch (error) {
-    await upsertMedia({
-      ...importing,
-      storageStatus: 'failed',
-    });
-    throw error;
+    const cleanup = await Promise.allSettled([
+      ...(Platform.OS === 'web'
+        ? [deleteWebBlob(mediaId), deleteWebBlob(`${mediaId}:thumbnail`)]
+        : createdUris.map((uri) => FileSystem.deleteAsync(uri, { idempotent: true }))),
+      ...(recordWriteAttempted ? [serializeMediaWrite(async () => {
+        await setStoredMedia((await getStoredMedia()).filter((record) => record.id !== mediaId));
+      })] : []),
+    ]);
+    const incomplete = cleanup.some((result) => result.status === 'rejected');
+    throw mediaError(`The image could not be saved.${incomplete ? ' Its incomplete copy could not be fully removed.' : ''}`, error);
   }
+}
+
+function cachedWebUri(key: string): Promise<string | undefined> {
+  if (deletingWebKeys.has(key)) return Promise.resolve(undefined);
+  const existing = objectUrls.get(key);
+  if (existing) return existing;
+  const pending = getWebBlob(key).then((blob) => {
+    if (!blob?.size || deletingWebKeys.has(key)) {
+      if (objectUrls.get(key) === pending) objectUrls.delete(key);
+      return undefined;
+    }
+    return URL.createObjectURL(blob);
+  }).catch((error) => {
+    if (objectUrls.get(key) === pending) objectUrls.delete(key);
+    throw mediaError('The saved image could not be read.', error);
+  });
+  objectUrls.set(key, pending);
+  return pending;
+}
+
+async function revokeCachedWebUri(key: string): Promise<void> {
+  const pending = objectUrls.get(key);
+  objectUrls.delete(key);
+  const uri = await pending?.catch(() => undefined);
+  if (uri) URL.revokeObjectURL(uri);
 }
 
 async function resolveManagedMediaRecordUri(
@@ -376,7 +478,7 @@ async function resolveManagedMediaRecordUri(
   if (!mediaId) return fallbackUri;
 
   const record = await getManagedMediaById(mediaId);
-  if (!record) return fallbackUri;
+  if (!record) return undefined;
 
   const preferredUri = variant === 'thumbnail'
     ? record.thumbnailUri ?? record.localManagedUri
@@ -384,15 +486,15 @@ async function resolveManagedMediaRecordUri(
 
   if (Platform.OS === 'web') {
     const webKey = webKeyFromManagedUri(preferredUri) ?? mediaId;
-    const blob = await getWebBlob(webKey);
-    if (blob) return URL.createObjectURL(blob);
+    const uri = await cachedWebUri(webKey);
+    if (uri) return uri;
 
     if (variant === 'thumbnail') {
-      const originalBlob = await getWebBlob(mediaId);
-      if (originalBlob) return URL.createObjectURL(originalBlob);
+      const originalUri = await cachedWebUri(mediaId);
+      if (originalUri) return originalUri;
     }
 
-    return record.remoteUrl ?? fallbackUri;
+    return record.remoteUrl;
   }
 
   if (preferredUri) {
@@ -405,7 +507,7 @@ async function resolveManagedMediaRecordUri(
     if (info.exists) return record.localManagedUri;
   }
 
-  return record.remoteUrl ?? fallbackUri;
+  return record.remoteUrl;
 }
 
 export async function resolveManagedMediaUri(
@@ -424,37 +526,59 @@ export async function resolveManagedMediaThumbnailUri(
 
 export async function deleteManagedMedia(mediaId?: string): Promise<void> {
   if (!mediaId) return;
-  const records = await getStoredMedia();
-  const record = records.find((item) => item.id === mediaId);
+  return serializeMediaWrite(async () => {
+    const records = await getStoredMedia();
+    const record = records.find((item) => item.id === mediaId);
 
-  if (Platform.OS === 'web') {
-    await deleteWebBlob(mediaId);
-    const thumbnailKey = webKeyFromManagedUri(record?.thumbnailUri);
-    if (thumbnailKey && thumbnailKey !== mediaId) {
-      await deleteWebBlob(thumbnailKey);
+    if (Platform.OS === 'web') {
+      const thumbnailKey = webKeyFromManagedUri(record?.thumbnailUri) ?? `${mediaId}:thumbnail`;
+      const keys = [...new Set([mediaId, thumbnailKey])];
+      keys.forEach((key) => deletingWebKeys.add(key));
+      try {
+        for (const key of keys) {
+          await revokeCachedWebUri(key);
+          await deleteWebBlob(key);
+        }
+      } finally {
+        keys.forEach((key) => deletingWebKeys.delete(key));
+      }
+    } else {
+      const uris = [record?.localManagedUri, record?.thumbnailUri]
+        .filter((uri, index, all): uri is string => isManagedMediaUri(uri) && all.indexOf(uri) === index);
+
+      await Promise.all(uris.map((uri) => (
+        FileSystem.deleteAsync(uri, { idempotent: true })
+      )));
     }
-  } else {
-    const uris = [record?.localManagedUri, record?.thumbnailUri]
-      .filter((uri, index, all): uri is string => Boolean(uri) && all.indexOf(uri) === index);
 
-    await Promise.all(uris.map((uri) => (
-      FileSystem.deleteAsync(uri, { idempotent: true })
-    )));
+    await setStoredMedia(records.filter((item) => item.id !== mediaId));
+  }).catch((error) => { throw mediaError('The saved image could not be deleted.', error); });
+}
+
+export async function assertManagedMediaReadable(mediaId: string): Promise<ManagedMedia> {
+  const record = await getManagedMediaById(mediaId);
+  if (!record || !isManagedMediaUri(record.localManagedUri)
+    || !['stored_local', 'uploaded'].includes(record.storageStatus)) {
+    throw new Error('The saved image is missing. Please select the image again.');
   }
-
-  await setStoredMedia(records.filter((item) => item.id !== mediaId));
+  try {
+    if (Platform.OS === 'web') {
+      const key = webKeyFromManagedUri(record.localManagedUri);
+      const blob = key ? await getWebBlob(key) : undefined;
+      if (!blob) throw new Error('The image copy is missing.');
+      const decoded = await decodeWebImage(blob);
+      decoded.close();
+    } else {
+      await nativeImageSize(record.localManagedUri!);
+    }
+    return record;
+  } catch (error) { throw mediaError('The saved image could not be verified.', error); }
 }
 
 export async function verifyManagedMedia(mediaId?: string): Promise<boolean> {
   if (!mediaId) return false;
-  const record = await getManagedMediaById(mediaId);
-  if (!record) return false;
-
-  if (Platform.OS === 'web') {
-    return Boolean(await getWebBlob(mediaId));
-  }
-
-  if (!record.localManagedUri) return false;
-  const info = await FileSystem.getInfoAsync(record.localManagedUri);
-  return info.exists;
+  try {
+    await assertManagedMediaReadable(mediaId);
+    return true;
+  } catch { return false; }
 }

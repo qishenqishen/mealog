@@ -70,6 +70,7 @@ export interface MealLocation {
 
 export interface MealEntry {
   id: string;
+  origin?: 'sample' | 'user';
   userId?: string;
   title: string;
   mealType: MealType;
@@ -137,6 +138,7 @@ export type PersonRelationship =
 
 export interface PersonProfile {
   id: string;
+  origin?: 'sample' | 'user';
   userId?: string;
   name: string;
   nickname?: string;
@@ -163,6 +165,7 @@ export interface MealCompanion {
 
 export interface SharedMealPhoto {
   id: string;
+  origin?: 'sample' | 'user';
   userId?: string;
   mealId: string;
   mediaId?: string;

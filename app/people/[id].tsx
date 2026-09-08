@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useI18n, translate, type Locale } from '../../src/i18n';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -10,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import {
   getMealCompanions,
@@ -23,11 +24,12 @@ import type { MealCompanion, MealEntry, PersonProfile, SharedMealPhoto } from '.
 import { colors, shadow } from '../../src/theme';
 import PersonAvatar from '../../src/components/PersonAvatar';
 import CreatePersonModal from '../../src/components/CreatePersonModal';
+import LoadState from '../../src/components/LoadState';
 
-function formatDate(dateStr?: string): string {
-  if (!dateStr) return 'not yet';
+function formatDate(dateStr: string | undefined, locale: Locale): string {
+  if (!dateStr) return translate('not yet');
   const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+  return new Date(year, month - 1, day).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
@@ -35,31 +37,37 @@ function formatDate(dateStr?: string): string {
 }
 
 function confirmDelete(person: PersonProfile, onConfirm: () => void) {
-  const message = 'This soft-deletes the profile only. Meal memories stay in the archive.';
+  const message = translate('This soft-deletes the profile only. Meal memories stay in the archive.');
+  const title = translate('Delete {name}?', { name: person.name });
   if (Platform.OS === 'web') {
     // eslint-disable-next-line no-restricted-globals
-    if (confirm(`Delete ${person.name}?\n\n${message}`)) onConfirm();
+    if (confirm(`${title}\n\n${message}`)) onConfirm();
     return;
   }
-  Alert.alert(`Delete ${person.name}?`, message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete person', style: 'destructive', onPress: onConfirm },
+  Alert.alert(title, message, [
+    { text: translate('Cancel'), style: 'cancel' },
+    { text: translate('Delete person'), style: 'destructive', onPress: onConfirm },
   ]);
 }
 
 export default function PersonDetailPage() {
+  const { t, locale } = useI18n();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const goBack = () => router.canGoBack() ? router.back() : router.replace('/people');
   const [person, setPerson] = useState<PersonProfile | null>(null);
   const [meals, setMeals] = useState<MealEntry[]>([]);
   const [companions, setCompanions] = useState<MealCompanion[]>([]);
   const [photos, setPhotos] = useState<SharedMealPhoto[]>([]);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!id) { setLoading(false); return; }
     setLoading(true);
+    setError(undefined);
+    try {
     const [nextPerson, nextMeals, nextCompanions, nextPhotos] = await Promise.all([
       getPersonById(id, { includeDeleted: true }),
       getMeals(),
@@ -70,12 +78,16 @@ export default function PersonDetailPage() {
     setMeals(nextMeals);
     setCompanions(nextCompanions);
     setPhotos(nextPhotos);
-    setLoading(false);
+    } catch {
+      setError('Could not load this person.');
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(useCallback(() => {
+    void load();
+  }, [load]));
 
   const sharedMealIds = useMemo(
     () => new Set(companions.filter((item) => item.personId === id).map((item) => item.mealId)),
@@ -111,7 +123,7 @@ export default function PersonDetailPage() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <Text style={styles.loadingText}>Opening this seat...</Text>
+          <Text style={styles.loadingText}>{t("Opening this seat...")}</Text>
         </View>
       </SafeAreaView>
     );
@@ -121,9 +133,9 @@ export default function PersonDetailPage() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <Text style={styles.loadingText}>This person could not be found.</Text>
-          <Pressable style={styles.navButton} onPress={() => router.back()}>
-            <Text style={styles.navButtonText}>Back</Text>
+          {error ? <LoadState error={error} onRetry={load} /> : <Text style={styles.loadingText}>{t("This person could not be found.")}</Text>}
+          <Pressable accessibilityRole="button" style={styles.navButton} onPress={goBack}>
+            <Text style={styles.navButtonText}>{t("Back")}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -134,12 +146,12 @@ export default function PersonDetailPage() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
-          <Pressable style={styles.navButton} onPress={() => router.back()}>
-            <Text style={styles.navButtonText}>Back</Text>
+          <Pressable accessibilityRole="button" style={styles.navButton} onPress={goBack}>
+            <Text style={styles.navButtonText}>{t("Back")}</Text>
           </Pressable>
           {!person.deletedAt ? (
-            <Pressable style={styles.navButton} onPress={() => setEditing(true)}>
-              <Text style={styles.navButtonText}>Edit person</Text>
+            <Pressable accessibilityRole="button" style={styles.navButton} onPress={() => setEditing(true)}>
+              <Text style={styles.navButtonText}>{t("Edit person")}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -148,65 +160,68 @@ export default function PersonDetailPage() {
           <PersonAvatar person={person} size={86} />
           <Text style={styles.name}>{person.nickname ?? person.name}</Text>
           <Text style={styles.relationship}>
-            {person.deletedAt ? 'Deleted person' : person.relationship ?? 'A remembered seat'}
+            {person.deletedAt ? t('Deleted person') : t(person.relationship ?? 'A remembered seat')}
           </Text>
           {person.note ? <Text style={styles.note}>{person.note}</Text> : null}
         </View>
 
+        <LoadState error={error} onRetry={load} />
+
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{sharedMeals.length}</Text>
-            <Text style={styles.statLabel}>shared meals</Text>
+            <Text style={styles.statLabel}>{t("shared meals")}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{sharedPhotos.length}</Text>
-            <Text style={styles.statLabel}>photographs</Text>
+            <Text style={styles.statLabel}>{t("photographs")}</Text>
           </View>
         </View>
 
         <View style={styles.paper}>
-          <Text style={styles.paperLine}>First meal together: {formatDate(firstDate)}</Text>
-          <Text style={styles.paperLine}>Recently shared: {formatDate(lastDate)}</Text>
+          <Text style={styles.paperLine}>{t('First meal together: {date}', { date: formatDate(firstDate, locale) })}</Text>
+          <Text style={styles.paperLine}>{t('Recently shared: {date}', { date: formatDate(lastDate, locale) })}</Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Shared meals</Text>
+          <Text style={styles.sectionTitle}>{t("Shared meals")}</Text>
           {sharedMeals.length > 0 ? (
             sharedMeals.map((meal) => (
               <Pressable
+                accessibilityRole="button"
                 key={meal.id}
                 style={styles.mealRow}
                 onPress={() => router.push(`/meal/${meal.id}`)}
               >
                 <Text style={styles.mealTitle}>{meal.title}</Text>
-                <Text style={styles.mealMeta}>{formatDate(meal.date)} · {meal.time}</Text>
+                <Text style={styles.mealMeta}>{formatDate(meal.date, locale)} · {meal.time}</Text>
               </Pressable>
             ))
           ) : (
-            <Text style={styles.emptyText}>No shared meals yet.</Text>
+            <Text style={styles.emptyText}>{t("No shared meals yet.")}</Text>
           )}
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Shared photographs</Text>
+          <Text style={styles.sectionTitle}>{t("Shared photographs")}</Text>
           {sharedPhotos.length > 0 ? (
             <View style={styles.photoGrid}>
               {sharedPhotos.map((photo) => (
                 <View key={photo.id} style={styles.photoCard}>
                   <Image source={{ uri: photo.imageUrl }} style={styles.photo} />
                   <Text style={styles.photoCaption} numberOfLines={2}>
-                    {photo.caption ?? 'Together at this table'}
+                    {photo.caption ?? t('Together at this table')}
                   </Text>
                 </View>
               ))}
             </View>
           ) : (
-            <Text style={styles.emptyText}>No shared photographs yet.</Text>
+            <Text style={styles.emptyText}>{t("No shared photographs yet.")}</Text>
           )}
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notes mentioning this person</Text>
+          <Text style={styles.sectionTitle}>{t("Notes mentioning this person")}</Text>
           {notesMentioningPerson.length > 0 ? (
             notesMentioningPerson.map((meal) => (
               <View key={meal.id} style={styles.noteCard}>
@@ -215,19 +230,24 @@ export default function PersonDetailPage() {
               </View>
             ))
           ) : (
-            <Text style={styles.emptyText}>No notes mention this person yet.</Text>
+            <Text style={styles.emptyText}>{t("No notes mention this person yet.")}</Text>
           )}
         </View>
 
         {!person.deletedAt ? (
           <Pressable
+            accessibilityRole="button"
             style={styles.deleteProfile}
             onPress={() => confirmDelete(person, async () => {
-              await softDeletePersonProfile(person.id);
-              await load();
+              try {
+                await softDeletePersonProfile(person.id);
+                await load();
+              } catch {
+                setError('Could not delete this person. Please try again.');
+              }
             })}
           >
-            <Text style={styles.deleteProfileText}>Delete person profile</Text>
+            <Text style={styles.deleteProfileText}>{t("Delete person profile")}</Text>
           </Pressable>
         ) : null}
       </ScrollView>

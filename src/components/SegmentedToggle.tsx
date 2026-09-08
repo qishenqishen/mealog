@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radii, type as T } from '../theme';
+import { useI18n } from '../i18n';
 
 interface SegmentedToggleProps {
   segments: string[];
@@ -12,18 +13,21 @@ export default function SegmentedToggle({
   activeIndex,
   onPress,
 }: SegmentedToggleProps) {
+  const { t } = useI18n();
   return (
     <View style={styles.container}>
       {segments.map((label, i) => {
         const active = i === activeIndex;
         return (
           <Pressable
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
             key={label}
             onPress={() => onPress(i)}
             style={[styles.segment, active && styles.segmentActive]}
           >
             <Text style={[styles.label, active && styles.labelActive]}>
-              {label}
+              {t(label)}
             </Text>
           </Pressable>
         );

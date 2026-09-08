@@ -1,54 +1,24 @@
-# Portfolio Embed
+# Optional Portfolio Embed
 
-Mealog can be embedded as an interactive portfolio demo after deploying the Expo web export.
+The primary experience is now the independent App:
 
-## Recommended embed URL
+[Open Mealog](https://mealog.qs2077.workers.dev/)
 
-Use the showcase route so every visitor gets a complete local demo dataset before entering the app:
+Send this link to reviewers. It works without visiting a portfolio or downloading code.
+
+An existing portfolio can optionally embed the same App:
 
 ```html
 <iframe
-  title="Mealog interactive product demo"
-  src="https://YOUR_DEPLOYED_MEALOG_URL/showcase?target=home"
-  style="width: 390px; height: 844px; border: 0; border-radius: 36px; overflow: hidden;"
+  title="Mealog"
+  src="https://mealog.qs2077.workers.dev/"
+  style="width:100%;max-width:460px;height: min(844px, 90dvh);border:0;"
   loading="lazy"
 ></iframe>
 ```
 
-Target options:
+Each browser has its own local data. Browser restrictions on third-party storage can affect embeds, so always provide the direct App link. Camera/location in an iframe additionally need appropriate permissions; the direct URL is preferred.
 
-- `target=home`
-- `target=archive`
-- `target=add`
-- `target=insights`
-- `target=collection`
+The old /showcase?target=home route still redirects to Home, and supported legacy targets redirect to their respective tabs. /portfolio-preview redirects to Home. Neither route resets existing data. First-visit preparation and interruption recovery now belong to the main App bootstrap.
 
-## Portfolio preview page
-
-Use this local route to preview how the demo feels inside a portfolio-style phone frame:
-
-```txt
-http://localhost:8086/portfolio-preview
-```
-
-For the actual portfolio iframe, embed `/showcase?target=home` rather than `/portfolio-preview`. The preview page is a design aid; the showcase route is the clean, phone-sized interactive product demo.
-
-## What the showcase route prepares
-
-- Onboarding is marked complete for the demo visitor.
-- A local guest identity is created.
-- Sample meals, companions, people, notes, moods, photos, shared photos, and keepsakes are inserted through the same app storage APIs as normal use.
-- Demo photos are imported through the managed media flow instead of being kept as temporary picker/object URLs.
-- The Insights tab receives enough sample data to show a warm monthly report, not just empty analytics.
-
-## Deployment command
-
-```bash
-npm run export:web
-```
-
-Deploy the generated `dist` directory to any static host. The demo is local-first, so each portfolio visitor gets their own browser-local sample state.
-
-## Product note
-
-The current Insights report uses a deterministic on-device provider named `local_narrative_demo`. It is shaped as the future AI monthly report boundary, without exposing private notes or requiring a frontend API key.
+The portfolio site itself is not changed by this standalone MVP release.

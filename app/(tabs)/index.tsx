@@ -1,3 +1,4 @@
+import { useI18n, translate } from '../../src/i18n';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Image,
@@ -30,6 +31,8 @@ import DateStrip from '../../src/components/DateStrip';
 import { MONTH_KEYS, getMonthLabel } from '../../src/utils/season';
 import PeoplePickerSheet from '../../src/components/PeoplePickerSheet';
 import PersonAvatar from '../../src/components/PersonAvatar';
+import LoadState from '../../src/components/LoadState';
+import { TabIcon } from '../../src/components/TabIcon';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -82,7 +85,7 @@ function getMealMoodLabel(meal: MealEntry): string | undefined {
       : [];
 
   if (moodTags.length === 0) return undefined;
-  return moodTags.map((tag) => MOOD_LABELS[tag] ?? tag).join(' · ');
+  return moodTags.map((tag) => translate(MOOD_LABELS[tag] ?? tag)).join(' · ');
 }
 
 function getMealSubtitle(meal: MealEntry): string {
@@ -110,11 +113,13 @@ function getPeopleTagCounts(meals: MealEntry[]): { id: string; label: string; co
 // ── Meal Row ────────────────────────────────────────────────
 
 function MealRow({ meal, onPress }: { meal: MealEntry; onPress: () => void }) {
+  const { t } = useI18n();
   const subtitle = getMealSubtitle(meal);
-  const title = meal.title || meal.note || MEAL_TYPE_META[meal.mealType].label;
+  const title = meal.title || meal.note || t(MEAL_TYPE_META[meal.mealType].label);
 
   return (
     <Pressable
+      accessibilityRole="button"
       style={({ pressed }) => [styles.mealRow, pressed && { opacity: 0.8 }]}
       onPress={onPress}
     >
@@ -124,7 +129,7 @@ function MealRow({ meal, onPress }: { meal: MealEntry; onPress: () => void }) {
         <View style={[styles.mealThumb, styles.mealThumbPlaceholder]}>
           <View style={styles.mealThumbPlate} />
           <Text style={styles.mealThumbInitial}>
-            {MEAL_TYPE_META[meal.mealType].initial}
+            {t(MEAL_TYPE_META[meal.mealType].initial)}
           </Text>
         </View>
       )}
@@ -161,6 +166,7 @@ const SWITCHER = ['Catering', 'People'] as const;
 // ── Home Screen ─────────────────────────────────────────────
 
 export default function HomeScreen() {
+  const { t, locale } = useI18n();
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -174,16 +180,21 @@ export default function HomeScreen() {
   const [peopleProfiles, setPeopleProfiles] = useState<PersonProfile[]>([]);
   const [peoplePickerOpen, setPeoplePickerOpen] = useState(false);
   const [peoplePickerMealId, setPeoplePickerMealId] = useState<string | undefined>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+  const [reloadToken, setReloadToken] = useState(0);
 
   const selectedKey = toDateKey(selectedDate);
   const monthIndex = selectedDate.getMonth();
-  const monthLabel = getMonthLabel(monthIndex);
+  const monthLabel = t(getMonthLabel(monthIndex));
   const yearLabel = selectedDate.getFullYear();
 
   // Load all meals when screen focuses.
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      setLoading(true);
+      setError(undefined);
       Promise.all([getMeals(), getMealCompanions(), getPeopleProfiles()]).then(
         ([all, companions, profiles]) => {
           if (!active) return;
@@ -191,9 +202,13 @@ export default function HomeScreen() {
           setMealCompanionsState(companions);
           setPeopleProfiles(profiles);
         },
-      );
+      ).catch(() => {
+        if (active) setError('Could not load your meals.');
+      }).finally(() => {
+        if (active) setLoading(false);
+      });
       return () => { active = false; };
-    }, [])
+    }, [reloadToken])
   );
 
   // All meals for the day (for category counts).
@@ -313,16 +328,19 @@ export default function HomeScreen() {
 
         return {
           ...meal,
+          origin: 'user' as const,
           peopleTags: [...current],
         };
       });
 
-      await Promise.all(updatedMeals.map((meal) => saveMeal(meal)));
+      for (const meal of updatedMeals) await saveMeal(meal);
 
       setAllMeals((currentMeals) => currentMeals.map((meal) => {
         const updated = updatedMeals.find((candidate) => candidate.id === meal.id);
         return updated ?? meal;
       }));
+    } catch {
+      setError('Could not save these changes. Please try again.');
     } finally {
       setUpdatingPeople(null);
     }
@@ -338,10 +356,23 @@ export default function HomeScreen() {
       >
         {/* ── Editorial top section ── */}
         <View style={styles.topSection}>
+          <View style={styles.headerRow}>
+            <Text style={styles.wordmark}>Mealog</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('Your table & settings')}
+              onPress={() => router.push('/profile')}
+              style={({ pressed }) => [styles.profileButton, pressed && { opacity: 0.65 }]}
+            >
+              <TabIcon name="profile" focused />
+            </Pressable>
+          </View>
           <Text style={styles.introLine}>
-            Keep a record of your meals every day
+            {t('Keep a record of your meals every day')}
           </Text>
         </View>
+
+        <LoadState loading={loading} error={error} onRetry={() => setReloadToken((value) => value + 1)} />
 
         {/* ── Scrollable date strip ── */}
         <DateStrip
@@ -352,6 +383,8 @@ export default function HomeScreen() {
 
         {/* ── Month label ── */}
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('Choose a month')}
           style={styles.monthRow}
           onPress={() => setMonthPickerOpen(true)}
           hitSlop={8}
@@ -385,12 +418,14 @@ export default function HomeScreen() {
                 const count = dayMeals.filter((m) => cat.types.includes(m.mealType)).length;
                 return (
                   <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: isActive }}
                     key={cat.key}
-                    style={styles.categoryTab}
+                    style={[styles.categoryTab, cat.key === 'breakfast' && { flex: 1.3 }]}
                     onPress={() => setActiveCategory(cat.key)}
                   >
-                    <Text style={[styles.categoryLabel, isActive && styles.categoryLabelActive]}>
-                      {cat.label}
+                    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={[styles.categoryLabel, isActive && styles.categoryLabelActive]}>
+                      {t(cat.label)}
                     </Text>
                     <View style={styles.categoryTrack}>
                       <View
@@ -411,6 +446,8 @@ export default function HomeScreen() {
                 const isActive = i === activeSwitcher;
                 return (
                   <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: isActive }}
                     key={label}
                     style={[styles.switcherPill, isActive && styles.switcherPillActive]}
                     onPress={() => setActiveSwitcher(i)}
@@ -419,7 +456,7 @@ export default function HomeScreen() {
                       {label === 'Catering' ? '◎' : '⌑'}
                     </Text>
                     <Text style={[styles.switcherText, isActive && styles.switcherTextActive]}>
-                      {label}
+                      {t(label)}
                     </Text>
                   </Pressable>
                 );
@@ -428,7 +465,7 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.memoryPaper}>
-            {activeSwitcher === 0 ? (
+            {loading || error ? null : activeSwitcher === 0 ? (
               dayMeals.length > 0 ? (
                 mealGroups.map((group) => {
                   const showGroup = group.meals.length > 0 || group.key === activeCategory;
@@ -436,7 +473,7 @@ export default function HomeScreen() {
 
                   return (
                     <View key={group.key} style={styles.mealGroup}>
-                      <Text style={styles.groupTitle}>{group.label}</Text>
+                      <Text style={styles.groupTitle}>{t(group.label)}</Text>
                       {group.meals.length > 0 ? (
                         group.meals.map((meal, idx) => (
                           <View key={meal.id}>
@@ -449,39 +486,38 @@ export default function HomeScreen() {
                         ))
                       ) : (
                         <Text style={styles.groupEmptyText}>
-                          This part of the table is still quiet.
-                        </Text>
+                          {t("This part of the table is still quiet.")}</Text>
                       )}
                     </View>
                   );
                 })
               ) : (
                 <EmptyMemoryState
-                  title="No meals at this table yet"
-                  body="When you save a meal for this date, it will settle here by breakfast, lunch, dinner, or treats."
+                  title={t("No meals at this table yet")}
+                  body={t("When you save a meal for this date, it will settle here by breakfast, lunch, dinner, or treats.")}
                 />
               )
             ) : (
               <View style={styles.peopleSection}>
                 <View style={styles.peopleHeader}>
-                  <Text style={styles.peopleEyebrow}>Today's table</Text>
-                  <Text style={styles.peopleTitle}>Seats Around the Table</Text>
+                  <Text style={styles.peopleEyebrow}>{t("Today's table")}</Text>
+                  <Text style={styles.peopleTitle}>{t("Seats Around the Table")}</Text>
                   <Text style={styles.peopleIntro}>
-                    A softer record of who shared the meal, and what kind of table it became.
-                  </Text>
+                    {t("A softer record of who shared the meal, and what kind of table it became.")}</Text>
                 </View>
 
                 <View style={styles.realCompanionPanel}>
                   <View style={styles.realCompanionHeader}>
                     <View>
-                      <Text style={styles.realCompanionTitle}>Meal companions</Text>
+                      <Text style={styles.realCompanionTitle}>{t("Meal companions")}</Text>
                       <Text style={styles.realCompanionMeta}>
                         {dayMeals.length > 0
-                          ? 'Saved as reusable people profiles.'
-                          : 'Save a meal first, then add people to its table.'}
+                          ? t('Saved as reusable people profiles.')
+                          : t('Save a meal first, then add people to its table.')}
                       </Text>
                     </View>
                     <Pressable
+                      accessibilityRole="button"
                       style={[
                         styles.realCompanionButton,
                         dayMeals.length === 0 && styles.realCompanionButtonDisabled,
@@ -491,7 +527,7 @@ export default function HomeScreen() {
                         setPeoplePickerOpen(true);
                       }}
                     >
-                      <Text style={styles.realCompanionButtonText}>+ People</Text>
+                      <Text style={styles.realCompanionButtonText}>{t("+ People")}</Text>
                     </Pressable>
                   </View>
 
@@ -505,7 +541,7 @@ export default function HomeScreen() {
                               {person.nickname ?? person.name}
                             </Text>
                             <Text style={styles.realCompanionRelationship}>
-                              {person.relationship ?? 'At this table'}
+                              {t(person.relationship ?? 'At this table')}
                             </Text>
                           </View>
                         </View>
@@ -514,11 +550,9 @@ export default function HomeScreen() {
                   ) : (
                     <View style={styles.peoplePlaceholder}>
                       <Text style={styles.peoplePlaceholderTitle}>
-                        No one has taken a seat yet.
-                      </Text>
+                        {t("No one has taken a seat yet.")}</Text>
                       <Text style={styles.peoplePlaceholderBody}>
-                        Add someone the next time you share a meal.
-                      </Text>
+                        {t("Add someone the next time you share a meal.")}</Text>
                     </View>
                   )}
                 </View>
@@ -532,9 +566,9 @@ export default function HomeScreen() {
                           <View style={styles.seatMarkBase} />
                         </View>
                         <View style={styles.peopleTagTextWrap}>
-                          <Text style={styles.peopleTagLabel}>{tag.label}</Text>
+                          <Text style={styles.peopleTagLabel}>{PEOPLE_TAG_LABELS[tag.id] ? t(tag.label) : tag.label}</Text>
                           <Text style={styles.peopleTagMeta}>
-                            {tag.count === 1 ? '1 meal remembered' : `${tag.count} meals remembered`}
+                            {t(tag.count === 1 ? '{count} meal remembered' : '{count} meals remembered', { count: tag.count })}
                           </Text>
                         </View>
                       </View>
@@ -543,23 +577,24 @@ export default function HomeScreen() {
                 ) : (
                   <View style={styles.peoplePlaceholder}>
                     <Text style={styles.peoplePlaceholderTitle}>
-                      This table has not named its seats yet.
-                    </Text>
+                      {t("This table has not named its seats yet.")}</Text>
                     <Text style={styles.peoplePlaceholderBody}>
                       {dayMeals.length > 0
-                        ? 'Choose the companionship that best fits this date.'
-                        : 'Log a meal first, then return here to remember who was around the table.'}
+                        ? t('Choose the companionship that best fits this date.')
+                        : t('Log a meal first, then return here to remember who was around the table.')}
                     </Text>
                   </View>
                 )}
 
-                <Text style={styles.companionshipLabel}>Companionship</Text>
+                <Text style={styles.companionshipLabel}>{t("Companionship")}</Text>
                 <View style={styles.companionshipGrid}>
                   {DEFAULT_COMPANIONSHIP_TAGS.map((tag) => {
                     const active = activePeopleTagIds.has(tag.id);
                     const disabled = dayMeals.length === 0 || updatingPeople !== null;
                     return (
                       <Pressable
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: active, disabled }}
                         key={tag.id}
                         disabled={disabled}
                         onPress={() => handleTogglePeopleTag(tag.id)}
@@ -576,7 +611,7 @@ export default function HomeScreen() {
                             active && styles.companionshipChipTextActive,
                           ]}
                         >
-                          {tag.label}
+                          {t(tag.label)}
                         </Text>
                       </Pressable>
                     );
@@ -596,6 +631,8 @@ export default function HomeScreen() {
         onRequestClose={() => setMonthPickerOpen(false)}
       >
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('Close')}
           style={styles.pickerOverlay}
           onPress={() => setMonthPickerOpen(false)}
         >
@@ -607,6 +644,8 @@ export default function HomeScreen() {
                 const isCurrent = i === selectedDate.getMonth();
                 return (
                   <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isCurrent }}
                     key={name}
                     style={[styles.pickerItem, isCurrent && styles.pickerItemActive]}
                     onPress={() => handleMonthSelect(i)}
@@ -617,7 +656,7 @@ export default function HomeScreen() {
                         isCurrent && styles.pickerItemTextActive,
                       ]}
                     >
-                      {name.slice(0, 3)}
+                      {t(name.slice(0, 3))}
                     </Text>
                   </Pressable>
                 );
@@ -661,8 +700,26 @@ const styles = StyleSheet.create({
   /* ── Editorial top section ── */
   topSection: {
     paddingHorizontal: 20,
-    paddingTop: 34,
+    paddingTop: 10,
     paddingBottom: 8,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  wordmark: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontStyle: 'italic',
+    color: colors.primary,
+  },
+  profileButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   introLine: {
     fontSize: 12,
@@ -698,6 +755,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pickerSheet: {
+    maxWidth: '90%',
     backgroundColor: colors.background,
     borderRadius: 16,
     paddingVertical: 20,
@@ -769,14 +827,14 @@ const styles = StyleSheet.create({
   categoryRail: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 14,
+    gap: 8,
   },
   categoryTab: {
     flex: 1,
     minWidth: 0,
   },
   categoryLabel: {
-    fontSize: 15.5,
+    fontSize: 14,
     fontStyle: 'italic',
     color: colors.muted,
     marginBottom: 9,

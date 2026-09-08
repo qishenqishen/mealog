@@ -1,8 +1,9 @@
+import { useI18n } from '../i18n';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import type { PersonProfile } from '../types';
 import { colors } from '../theme';
-import { getPersonDisplayName, getPersonInitials } from '../utils/people';
+import { getPersonInitials } from '../utils/people';
 
 export default function PersonAvatar({
   person,
@@ -15,14 +16,17 @@ export default function PersonAvatar({
   avatarUrl?: string;
   size?: number;
 }) {
-  const displayName = getPersonDisplayName(person) === 'Deleted person'
-    ? name ?? 'Deleted person'
-    : getPersonDisplayName(person) || name;
+  const { t } = useI18n();
+  const displayName = person?.deletedAt
+    ? name ?? t('Deleted person')
+    : person?.nickname ?? person?.name ?? name ?? t('Deleted person');
   const source = person?.avatarUrl ?? avatarUrl;
   const initials = getPersonInitials(displayName);
 
   return (
     <View
+      accessible
+      accessibilityLabel={displayName}
       style={[
         styles.avatar,
         {

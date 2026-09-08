@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { colors } from '../theme';
 
-export type TabIconName = 'home' | 'archive' | 'add' | 'insights' | 'collection';
+export type TabIconName = 'home' | 'archive' | 'add' | 'insights' | 'collection' | 'profile';
 export type CollectionIconVariant = 'forkKnife' | 'chopsticks' | 'forkSpoon';
 
 export const COLLECTION_FINAL_ICON_VARIANT: CollectionIconVariant = 'forkKnife';
@@ -41,6 +41,15 @@ export function TabIcon({
   collectionVariant = COLLECTION_FINAL_ICON_VARIANT,
 }: TabIconProps) {
   const tint = focused ? colors.primary : 'rgba(141, 123, 102, 0.38)';
+
+  if (name === 'profile') {
+    return (
+      <View style={styles.iconBox}>
+        <View style={[styles.profileHead, { borderColor: tint }]} />
+        <View style={[styles.profileShoulders, { borderColor: tint }]} />
+      </View>
+    );
+  }
 
   if (name === 'home') {
     return (
@@ -168,6 +177,22 @@ function SpoonGlyph({ tint }: { tint: string }) {
 }
 
 const styles = StyleSheet.create({
+  profileHead: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.2,
+    marginBottom: 3,
+  },
+  profileShoulders: {
+    width: 18,
+    height: 9,
+    borderTopLeftRadius: 9,
+    borderTopRightRadius: 9,
+    borderBottomLeftRadius: 2,
+    borderBottomRightRadius: 2,
+    borderWidth: 1.2,
+  },
   iconBox: {
     width: 28,
     height: 24,

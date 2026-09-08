@@ -1,0 +1,30 @@
+{
+  "base": "https://mealog.qs2077.workers.dev",
+  "testedAt": "2026-09-08T01:51:11.755Z",
+  "results": [
+    {
+      "test": "Person avatar is managed, survives source deletion/reload and remains visible while editing",
+      "status": "PASS",
+      "detail": {
+        "personId": "58dece9e-fa8e-4afc-b5f3-8ecd87fbe3f1",
+        "mediaId": "b419d300-8b50-4667-ba6b-06bc877c4503"
+      }
+    },
+    {
+      "test": "Shared upload, tag person, cover photo, source deletion and reload",
+      "status": "PASS",
+      "detail": {
+        "mealId": "18cd35d5-bb27-413f-b530-d05b6fb9824b",
+        "mediaId": "dc167044-971a-4b49-9b2d-28cc37bbdb27"
+      }
+    },
+    {
+      "test": "Person detail shows the new shared meal, avatar and shared photograph",
+      "status": "PASS"
+    },
+    {
+      "test": "No uncaught runtime errors",
+      "status": "PASS"
+    }
+  ]
+}

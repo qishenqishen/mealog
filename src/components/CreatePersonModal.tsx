@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useI18n } from '../i18n';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -18,6 +19,7 @@ import { savePersonProfile } from '../storage';
 import { colors, shadow } from '../theme';
 import { generateId } from '../utils/id';
 import PersonAvatar from './PersonAvatar';
+import LoadState from './LoadState';
 import { requestCameraPermission, requestPhotosPermission } from '../services/permissions';
 
 const RELATIONSHIPS: PersonRelationship[] = [
@@ -50,8 +52,10 @@ export default function CreatePersonModal({
   visible: boolean;
   person?: PersonProfile;
   onClose: () => void;
-  onSaved: (person: PersonProfile) => void;
+  onSaved: (person: PersonProfile) => Promise<void> | void;
 }) {
+  const { t } = useI18n();
+  const draftId = useRef(generateId());
   const [name, setName] = useState('');
   const [nickname, setNickname] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
@@ -59,9 +63,12 @@ export default function CreatePersonModal({
   const [relationship, setRelationship] = useState<PersonRelationship | undefined>();
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
 
   useEffect(() => {
     if (!visible) return;
+    draftId.current = person?.id || generateId();
+    setError(undefined);
     setName(person?.name ?? '');
     setNickname(person?.nickname ?? '');
     setAvatarUrl(person?.avatarUrl);
@@ -71,12 +78,13 @@ export default function CreatePersonModal({
   }, [person, visible]);
 
   const pickAvatar = async (source: 'camera' | 'library') => {
+    try {
     const permission = source === 'camera'
       ? await requestCameraPermission()
       : await requestPhotosPermission();
 
     if (!permission.granted) {
-      notify(permission.message ?? 'Photo permission is needed only if you want to add a profile photo.');
+      notify(t(permission.message ?? 'Photo permission is needed only if you want to add a profile photo.'));
       return;
     }
 
@@ -98,20 +106,26 @@ export default function CreatePersonModal({
       setAvatarUrl(result.assets[0]?.uri);
       setAvatarMediaId(undefined);
     }
+    } catch {
+      setError('Could not open photos. Please try again.');
+    }
   };
 
   const handleSave = async () => {
+    if (saving) return;
     const trimmedName = name.trim();
     if (!trimmedName) {
-      notify('A name is enough, but the name is needed.');
+      notify(t('A name is enough, but the name is needed.'));
       return;
     }
 
     setSaving(true);
+    setError(undefined);
     try {
       const now = new Date().toISOString();
       const saved = await savePersonProfile({
-        id: person?.id ?? generateId(),
+        id: person?.id || draftId.current,
+        origin: 'user',
         name: trimmedName,
         nickname: nickname.trim() || undefined,
         avatarMediaId,
@@ -122,75 +136,80 @@ export default function CreatePersonModal({
         updatedAt: now,
         deletedAt: person?.deletedAt,
       });
-      onSaved(saved);
+      await onSaved(saved);
       onClose();
+    } catch {
+      setError('Could not save this person. Please try again.');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => !saving && onClose()}>
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <Text style={styles.kicker}>{person ? 'Edit person' : 'Add someone new'}</Text>
-            <Text style={styles.title}>A seat at the table</Text>
+            <Text style={styles.kicker}>{person?.id ? t('Edit person') : t('Add someone new')}</Text>
+            <Text style={styles.title}>{t("A seat at the table")}</Text>
             <Text style={styles.subtitle}>
-              Keep only what you choose to remember. No contacts are read.
-            </Text>
+              {t("Keep only what you choose to remember. No contacts are read.")}</Text>
 
             <View style={styles.avatarRow}>
               {avatarUrl ? (
                 <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
               ) : (
-                <PersonAvatar name={name || 'New person'} size={66} />
+                <PersonAvatar name={name || t('New person')} size={66} />
               )}
               <View style={styles.avatarActions}>
-                <Pressable style={styles.smallButton} onPress={() => pickAvatar('camera')}>
-                  <Text style={styles.smallButtonText}>Take photo</Text>
+                <Pressable accessibilityRole="button" style={styles.smallButton} onPress={() => pickAvatar('camera')}>
+                  <Text style={styles.smallButtonText}>{t("Take photo")}</Text>
                 </Pressable>
-                <Pressable style={styles.smallButton} onPress={() => pickAvatar('library')}>
-                  <Text style={styles.smallButtonText}>Choose library</Text>
+                <Pressable accessibilityRole="button" style={styles.smallButton} onPress={() => pickAvatar('library')}>
+                  <Text style={styles.smallButtonText}>{t("Choose library")}</Text>
                 </Pressable>
-                <Pressable style={styles.smallButton} onPress={() => {
+                <Pressable accessibilityRole="button" style={styles.smallButton} onPress={() => {
                     setAvatarUrl(undefined);
                     setAvatarMediaId(undefined);
                   }}>
-                  <Text style={styles.smallButtonText}>Use initials</Text>
+                  <Text style={styles.smallButtonText}>{t("Use initials")}</Text>
                 </Pressable>
               </View>
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Name</Text>
+              <Text style={styles.label}>{t("Name")}</Text>
               <TextInput
+                accessibilityLabel={t('Name')}
                 value={name}
                 onChangeText={setName}
-                placeholder="Amy"
+                placeholder={t("Amy")}
                 placeholderTextColor="rgba(141, 123, 102, 0.52)"
                 style={styles.input}
               />
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Nickname</Text>
+              <Text style={styles.label}>{t("Nickname")}</Text>
               <TextInput
+                accessibilityLabel={t('Nickname')}
                 value={nickname}
                 onChangeText={setNickname}
-                placeholder="Ames, Mom, Q..."
+                placeholder={t("Ames, Mom, Q...")}
                 placeholderTextColor="rgba(141, 123, 102, 0.52)"
                 style={styles.input}
               />
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Relationship</Text>
+              <Text style={styles.label}>{t("Relationship")}</Text>
               <View style={styles.relationshipRow}>
                 {RELATIONSHIPS.map((option) => {
                   const active = relationship === option;
                   return (
                     <Pressable
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: active }}
                       key={option}
                       onPress={() => setRelationship(active ? undefined : option)}
                       style={[styles.relationshipChip, active && styles.relationshipChipActive]}
@@ -201,7 +220,7 @@ export default function CreatePersonModal({
                           active && styles.relationshipTextActive,
                         ]}
                       >
-                        {option}
+                        {t(option)}
                       </Text>
                     </Pressable>
                   );
@@ -210,11 +229,12 @@ export default function CreatePersonModal({
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Note</Text>
+              <Text style={styles.label}>{t("Note")}</Text>
               <TextInput
+                accessibilityLabel={t('Note')}
                 value={note}
                 onChangeText={setNote}
-                placeholder="A small note about this person..."
+                placeholder={t("A small note about this person...")}
                 placeholderTextColor="rgba(141, 123, 102, 0.52)"
                 style={[styles.input, styles.textArea]}
                 multiline
@@ -223,16 +243,18 @@ export default function CreatePersonModal({
             </View>
           </ScrollView>
 
+          <LoadState error={error} />
           <View style={styles.actions}>
-            <Pressable style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelText}>Cancel</Text>
+            <Pressable accessibilityRole="button" style={styles.cancelButton} onPress={onClose} disabled={saving}>
+              <Text style={styles.cancelText}>{t("Cancel")}</Text>
             </Pressable>
             <Pressable
+              accessibilityRole="button"
               style={[styles.saveButton, saving && styles.saveButtonDisabled]}
               disabled={saving}
               onPress={handleSave}
             >
-              <Text style={styles.saveText}>{saving ? 'Saving...' : 'Save person'}</Text>
+              <Text style={styles.saveText}>{saving ? t('Saving...') : t('Save person')}</Text>
             </Pressable>
           </View>
         </View>
@@ -248,6 +270,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(62, 43, 33, 0.28)',
   },
   sheet: {
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 460 : undefined,
+    alignSelf: 'center',
     maxHeight: '88%',
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,

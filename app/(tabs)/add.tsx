@@ -20,8 +20,7 @@ import {
   getMealById,
   getMealCompanions,
   getPeopleProfiles,
-  saveMeal,
-  setMealCompanions,
+  saveMealMemory,
 } from '../../src/storage';
 import { generateId } from '../../src/utils/id';
 import {
@@ -45,6 +44,7 @@ import {
 import StackedAvatarGroup from '../../src/components/StackedAvatarGroup';
 import { DEMO_MEAL_PHOTOS } from '../../src/demo/mealPhotoAssets';
 import { resolveDemoImageAssetUri } from '../../src/demo/demoImageResolver';
+import { useAddCopy } from '../../src/i18n/add';
 
 // ── Options ─────────────────────────────────────────────────
 
@@ -100,11 +100,7 @@ function isTimeKey(value: string): boolean {
   return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
 }
 
-function firstParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function notify(message: string) {
+function notifyRaw(message: string) {
   if (Platform.OS === 'web') {
     // eslint-disable-next-line no-alert
     alert(message);
@@ -130,10 +126,11 @@ function Section({
   title: string;
   children: React.ReactNode;
 }) {
+  const t = useAddCopy();
   return (
     <View style={styles.section}>
-      {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-      <Text style={styles.sectionTitle}>{title}</Text>
+      {eyebrow ? <Text style={styles.eyebrow}>{t(eyebrow)}</Text> : null}
+      <Text style={styles.sectionTitle}>{t(title)}</Text>
       {children}
     </View>
   );
@@ -150,8 +147,11 @@ function SoftChip({
   onPress: () => void;
   compact?: boolean;
 }) {
+  const t = useAddCopy();
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
       onPress={onPress}
       style={({ pressed }) => [
         styles.chip,
@@ -161,7 +161,7 @@ function SoftChip({
       ]}
     >
       <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-        {label}
+        {t(label)}
       </Text>
     </Pressable>
   );
@@ -180,14 +180,16 @@ function TextField({
   placeholder: string;
   multiline?: boolean;
 }) {
+  const t = useAddCopy();
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={styles.fieldLabel}>{t(label)}</Text>
       <TextInput
         style={[styles.input, multiline && styles.textArea]}
         value={value}
         onChangeText={onChangeText}
-        placeholder={placeholder}
+        placeholder={t(placeholder)}
+        accessibilityLabel={t(label)}
         placeholderTextColor="rgba(141, 123, 102, 0.52)"
         multiline={multiline}
         textAlignVertical={multiline ? 'top' : 'center'}
@@ -199,6 +201,8 @@ function TextField({
 // ── Add Screen ──────────────────────────────────────────────
 
 export default function AddScreen() {
+  const t = useAddCopy();
+  const notify = (message: string) => notifyRaw(t(message));
   const router = useRouter();
   const params = useLocalSearchParams();
   const rawEditMealId = params.editMealId;
@@ -207,8 +211,8 @@ export default function AddScreen() {
     : typeof rawEditMealId === 'string'
       ? rawEditMealId
       : undefined;
-  const isShowcase = firstParam(params.showcase) === '1';
-  const appliedShowcasePreset = useRef(false);
+  const draftId = useRef(generateId());
+  const saveInFlight = useRef(false);
   const now = useMemo(() => new Date(), []);
 
   const [mealType, setMealType] = useState<MealType>('lunch');
@@ -230,6 +234,7 @@ export default function AddScreen() {
   const [saving, setSaving] = useState(false);
   const [editingMeal, setEditingMeal] = useState<MealEntry | null>(null);
   const [loadingEditMeal, setLoadingEditMeal] = useState(false);
+  const [saveError, setSaveError] = useState<string | undefined>();
 
   const selectedMealType = MEAL_TYPES.find((type) => type.value === mealType) ?? MEAL_TYPES[0];
   const isEditing = Boolean(editMealId);
@@ -239,6 +244,8 @@ export default function AddScreen() {
   );
 
   const resetForm = () => {
+    draftId.current = generateId();
+    setSaveError(undefined);
     const freshNow = new Date();
     setMealType('lunch');
     setDate(formatDateKey(freshNow));
@@ -262,7 +269,7 @@ export default function AddScreen() {
 
     getPeopleProfiles().then((profiles) => {
       if (!cancelled) setPeopleProfiles(profiles);
-    });
+    }).catch(() => { if (!cancelled) setSaveError('People could not be loaded. Please try again.'); });
 
     if (!editMealId) {
       if (editingMeal) resetForm();
@@ -298,8 +305,11 @@ export default function AddScreen() {
           if (!cancelled) {
             setPersonIds(companions.map((companion) => companion.personId));
           }
+        }).catch(() => {
+          if (!cancelled) setSaveError('People could not be loaded. Please try again.');
         });
       })
+      .catch(() => { if (!cancelled) setSaveError('This meal memory could not be opened for editing.'); })
       .finally(() => {
         if (!cancelled) setLoadingEditMeal(false);
       });
@@ -332,25 +342,6 @@ export default function AddScreen() {
     };
   }, [editMealId]);
 
-  useEffect(() => {
-    if (!isShowcase || editMealId || appliedShowcasePreset.current) return;
-
-    const uri = resolveDemoImageAssetUri(DEMO_MEAL_PHOTOS.salmonAvocadoBowl);
-    if (uri) {
-      setPhotoUri(uri);
-      setPhotoMediaId(undefined);
-    }
-
-    setMealType('lunch');
-    setTitle('Salmon bowl after the studio');
-    setLocation('Window table');
-    setMoodTags(['peaceful', 'heartfelt']);
-    setPeopleTags(['shared-with-friend']);
-    setPersonIds(['demo-person-amy', 'demo-person-jordan']);
-    setNote('We ate slowly, traded notes, and let the afternoon stay soft for a little longer.');
-    appliedShowcasePreset.current = true;
-  }, [editMealId, isShowcase]);
-
   const applyMealLocation = (nextLocation: MealLocation) => {
     setLocationDetails(nextLocation);
     const label = formatMealLocation(nextLocation);
@@ -379,6 +370,7 @@ export default function AddScreen() {
   };
 
   const handlePickPhoto = async () => {
+    try {
     const permission = await requestPhotosPermission();
     if (!permission.granted) {
       notify(permission.message ?? 'Photo access is needed to attach a snapshot to this meal.');
@@ -387,14 +379,16 @@ export default function AddScreen() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [4, 5],
-      quality: 0.85,
+      allowsEditing: false,
+      quality: 1,
     });
 
     if (!result.canceled) {
       setPhotoUri(result.assets[0]?.uri);
       setPhotoMediaId(undefined);
+    }
+    } catch {
+      setSaveError('This photo could not be opened. Please choose another photo.');
     }
   };
 
@@ -410,7 +404,7 @@ export default function AddScreen() {
   };
 
   const handleSave = async () => {
-    if (saving || loadingEditMeal) return;
+    if (saveInFlight.current || loadingEditMeal || (editMealId && !editingMeal)) return;
 
     const trimmedTitle = title.trim();
     const trimmedLocation = location.trim();
@@ -426,9 +420,11 @@ export default function AddScreen() {
       return;
     }
 
+    saveInFlight.current = true;
     setSaving(true);
+    setSaveError(undefined);
     try {
-      const savedId = editingMeal?.id ?? generateId();
+      const savedId = editingMeal?.id ?? draftId.current;
       const createdAt = editingMeal?.createdAt ?? new Date().toISOString();
       const nextLocationDetails = locationDetails
         ? {
@@ -437,9 +433,10 @@ export default function AddScreen() {
             address: locationDetails.address ?? (trimmedLocation || undefined),
           }
         : buildManualMealLocation(trimmedLocation);
-      await saveMeal({
+      await saveMealMemory({
         id: savedId,
-        title: trimmedTitle || selectedMealType.label,
+        origin: 'user',
+        title: trimmedTitle || t(selectedMealType.label),
         mealType,
         date: date.trim(),
         time: time.trim(),
@@ -456,17 +453,15 @@ export default function AddScreen() {
         note: trimmedNote || undefined,
         createdAt,
         updatedAt: new Date().toISOString(),
-      });
-      await setMealCompanions(savedId, personIds);
+      }, personIds);
 
       resetForm();
 
-      if (editingMeal) {
-        router.replace(`/meal/${savedId}`);
-      } else {
-        router.navigate('/');
-      }
+      router.push(`/meal/${savedId}`);
+    } catch {
+      setSaveError('Your memory could not be saved. Check that the photo is readable and browser storage is available, then try again. Your form is kept.');
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
   };
@@ -484,19 +479,21 @@ export default function AddScreen() {
         >
           <View style={styles.header}>
             <Text style={styles.headerKicker}>
-              {isEditing ? 'Editing meal memory' : 'A new meal memory'}
+              {t(isEditing ? 'Editing meal memory' : 'A new meal memory')}
             </Text>
             <Text style={styles.headerTitle}>
-              {isEditing ? 'Refine the memory' : 'Set the table'}
+              {t(isEditing ? 'Refine the memory' : 'Set the table')}
             </Text>
             <Text style={styles.headerSubtitle}>
-              {isEditing
+              {t(isEditing
                 ? 'Adjust the details that still belong to this meal.'
-                : 'Keep the food, the hour, and who was near enough to remember.'}
+                : 'Keep the food, the hour, and who was near enough to remember.')}
             </Text>
           </View>
 
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t(photoUri ? 'Change meal photo' : 'Upload a meal photo')}
             onPress={handlePickPhoto}
             style={({ pressed }) => [
               styles.photoFrame,
@@ -508,15 +505,14 @@ export default function AddScreen() {
             ) : (
               <View style={styles.photoPlaceholder}>
                 <Text style={styles.photoPlus}>+</Text>
-                <Text style={styles.photoTitle}>A snapshot of the table</Text>
-                <Text style={styles.photoHint}>Some stories live best in pictures.</Text>
+                <Text style={styles.photoTitle}>{t('A snapshot of the table')}</Text>
+                <Text style={styles.photoHint}>{t('Some stories live best in pictures.')}</Text>
               </View>
             )}
           </Pressable>
 
-          {isShowcase ? (
             <View style={styles.demoPhotoPicker}>
-              <Text style={styles.demoPhotoKicker}>Showcase food photos</Text>
+              <Text style={styles.demoPhotoKicker}>{t('Or choose a sample photo')}</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -525,6 +521,8 @@ export default function AddScreen() {
                 {DEMO_PHOTO_CHOICES.map((choice) => (
                   <Pressable
                     key={choice.label}
+                    accessibilityRole="button"
+                    accessibilityLabel={t(choice.label)}
                     onPress={() => handleUseDemoPhoto(choice.source)}
                     style={({ pressed }) => [
                       styles.demoPhotoButton,
@@ -532,18 +530,19 @@ export default function AddScreen() {
                     ]}
                   >
                     <Image source={choice.source} style={styles.demoPhotoThumb} />
-                    <Text style={styles.demoPhotoLabel}>{choice.label}</Text>
+                    <Text style={styles.demoPhotoLabel}>{t(choice.label)}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
             </View>
-          ) : null}
 
           <Section eyebrow="Catering" title="What kind of meal was it?">
             <View style={styles.mealTypeGrid}>
               {MEAL_TYPES.map((type) => (
                 <Pressable
                   key={type.value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: mealType === type.value }}
                   onPress={() => setMealType(type.value)}
                   style={[
                     styles.mealTypeCard,
@@ -556,9 +555,9 @@ export default function AddScreen() {
                       mealType === type.value && styles.mealTypeLabelActive,
                     ]}
                   >
-                    {type.label}
+                    {t(type.label)}
                   </Text>
-                  <Text style={styles.mealTypeHint}>{type.hint}</Text>
+                  <Text style={styles.mealTypeHint}>{t(type.hint)}</Text>
                 </Pressable>
               ))}
             </View>
@@ -592,8 +591,9 @@ export default function AddScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Location</Text>
+              <Text style={styles.fieldLabel}>{t('Location')}</Text>
               <TextInput
+                accessibilityLabel={t('Location')}
                 style={styles.input}
                 value={location}
                 onChangeText={(value) => {
@@ -603,20 +603,21 @@ export default function AddScreen() {
                     setLocationStatus(undefined);
                   }
                 }}
-                placeholder="Little Ruby's SoHo, kitchen table..."
+                placeholder={t("Little Ruby's SoHo, kitchen table...")}
                 placeholderTextColor="rgba(141, 123, 102, 0.52)"
               />
               <View style={styles.locationToolsRow}>
                 <Pressable
+                  accessibilityRole="button"
                   style={[styles.locationButton, locating && styles.locationButtonDisabled]}
                   disabled={locating}
                   onPress={handleUseCurrentLocation}
                 >
                   <Text style={styles.locationButtonText}>
-                    {locating ? 'Finding place...' : 'Use current location'}
+                    {t(locating ? 'Finding place...' : 'Use current location')}
                   </Text>
                 </Pressable>
-                {locationStatus ? <Text style={styles.locationStatus}>{locationStatus}</Text> : null}
+                {locationStatus ? <Text style={styles.locationStatus}>{t(locationStatus)}</Text> : null}
               </View>
             </View>
           </View>
@@ -639,9 +640,9 @@ export default function AddScreen() {
             <View style={styles.realPeopleBox}>
               <View style={styles.realPeopleHeader}>
                 <View style={styles.realPeopleTextWrap}>
-                  <Text style={styles.peopleIntroTitle}>Meal companions</Text>
+                  <Text style={styles.peopleIntroTitle}>{t('Meal companions')}</Text>
                   <Text style={styles.peopleIntroText}>
-                    Save real people you can remember again at another table.
+                    {t('Save real people you can remember again at another table.')}
                   </Text>
                 </View>
                 {selectedPeople.length > 0 ? (
@@ -654,23 +655,24 @@ export default function AddScreen() {
                 </Text>
               ) : (
                 <Text style={styles.selectedPeopleLine}>
-                  No one has taken a seat yet.
+                  {t('No one has taken a seat yet.')}
                 </Text>
               )}
               <Pressable
+                accessibilityRole="button"
                 style={styles.peoplePickerButton}
                 onPress={() => setPeoplePickerOpen(true)}
               >
                 <Text style={styles.peoplePickerButtonText}>
-                  {selectedPeople.length > 0 ? 'Edit people at this meal' : 'Add people at this meal'}
+                  {t(selectedPeople.length > 0 ? 'Edit people at this meal' : 'Add people at this meal')}
                 </Text>
               </Pressable>
             </View>
 
             <View style={styles.peopleIntroBox}>
-              <Text style={styles.peopleIntroTitle}>Companionship, not contacts.</Text>
+              <Text style={styles.peopleIntroTitle}>{t('Companionship, not contacts.')}</Text>
               <Text style={styles.peopleIntroText}>
-                Choose the kind of table this meal belonged to.
+                {t('Choose the kind of table this meal belonged to.')}
               </Text>
             </View>
             <View style={styles.chipRow}>
@@ -687,10 +689,11 @@ export default function AddScreen() {
 
           <Section eyebrow="Note" title="What should stay with it?">
             <TextInput
+              accessibilityLabel={t('Note')}
               style={[styles.input, styles.noteInput]}
               value={note}
               onChangeText={setNote}
-              placeholder="A short memory, a conversation, the weather, the feeling of the room..."
+              placeholder={t('A short memory, a conversation, the weather, the feeling of the room...')}
               placeholderTextColor="rgba(141, 123, 102, 0.52)"
               multiline
               maxLength={420}
@@ -700,39 +703,37 @@ export default function AddScreen() {
         </ScrollView>
 
         <View style={styles.saveBar}>
+          {saveError ? <Text accessibilityLiveRegion="polite" style={styles.saveError}>{t(saveError)}</Text> : null}
           <Pressable
+            accessibilityRole="button"
             style={({ pressed }) => [
               styles.saveButton,
               pressed && styles.saveButtonPressed,
               saving && styles.saveButtonDisabled,
             ]}
             onPress={handleSave}
-            disabled={saving || loadingEditMeal}
+            disabled={saving || loadingEditMeal || Boolean(editMealId && !editingMeal)}
           >
             <Text style={styles.saveButtonText}>
-              {loadingEditMeal
+              {t(loadingEditMeal
                 ? 'Opening memory...'
                 : saving
                   ? 'Saving memory...'
                   : isEditing
                     ? 'Save changes'
-                    : 'Save meal memory'}
+                    : 'Save meal memory')}
             </Text>
           </Pressable>
         </View>
 
         <PeoplePickerSheet
           visible={peoplePickerOpen}
-          mealId={editingMeal?.id}
           selectedPersonIds={personIds}
           onClose={() => setPeoplePickerOpen(false)}
           onSave={async (ids) => {
             setPersonIds(ids);
             const profiles = await getPeopleProfiles();
             setPeopleProfiles(profiles);
-            if (editingMeal?.id) {
-              await setMealCompanions(editingMeal.id, ids);
-            }
           }}
           onChanged={async () => {
             const profiles = await getPeopleProfiles();
@@ -1060,6 +1061,7 @@ const styles = StyleSheet.create({
     minHeight: 122,
     lineHeight: 22,
   },
+  saveError: { color: '#9a4545', fontSize: 13, lineHeight: 18, marginBottom: 8 },
   saveBar: {
     paddingHorizontal: 22,
     paddingTop: 12,
