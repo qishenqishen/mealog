@@ -1,9 +1,11 @@
 export const DEMO_MEAL_PHOTOS = {
   berryToast: require('../../assets/demo/meal-photos/berry-toast.jpg'),
   blueberryToast: require('../../assets/demo/meal-photos/blueberry-toast.jpg'),
+  cafePastaSpread: require('../../assets/demo/meal-photos/cafe-pasta-spread.jpg'),
   cafeTiramisuDrinks: require('../../assets/demo/meal-photos/cafe-tiramisu-drinks.jpg'),
   eveningDrinks: require('../../assets/demo/meal-photos/evening-drinks.jpg'),
   homeStew: require('../../assets/demo/meal-photos/home-stew.jpg'),
+  mangoStickyRice: require('../../assets/demo/meal-photos/mango-sticky-rice.jpg'),
   pastaBowl: require('../../assets/demo/meal-photos/pasta-bowl.jpg'),
   riceBowl: require('../../assets/demo/meal-photos/rice-bowl.jpg'),
   saladWindowTable: require('../../assets/demo/meal-photos/salad-window-table.jpg'),
@@ -12,5 +14,6 @@ export const DEMO_MEAL_PHOTOS = {
   sharedTableSpread: require('../../assets/demo/meal-photos/shared-table-spread.jpg'),
   smallPlatedBites: require('../../assets/demo/meal-photos/small-plated-bites.jpg'),
   sushiSet: require('../../assets/demo/meal-photos/sushi-set.jpg'),
+  sushiHandRolls: require('../../assets/demo/meal-photos/sushi-hand-rolls.jpg'),
   tableFeast: require('../../assets/demo/meal-photos/table-feast.jpg'),
 } as const;

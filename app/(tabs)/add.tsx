@@ -67,9 +67,9 @@ const MOODS: { value: MoodTag; label: string }[] = [
 
 const DEMO_PHOTO_CHOICES: Array<{ label: string; source: ImageSourcePropType }> = [
   { label: 'Toast', source: DEMO_MEAL_PHOTOS.blueberryToast },
-  { label: 'Salad', source: DEMO_MEAL_PHOTOS.saladWindowTable },
-  { label: 'Small bites', source: DEMO_MEAL_PHOTOS.smallPlatedBites },
-  { label: 'Berry toast', source: DEMO_MEAL_PHOTOS.berryToast },
+  { label: 'Pasta brunch', source: DEMO_MEAL_PHOTOS.cafePastaSpread },
+  { label: 'Hand rolls', source: DEMO_MEAL_PHOTOS.sushiHandRolls },
+  { label: 'Mango rice', source: DEMO_MEAL_PHOTOS.mangoStickyRice },
   { label: 'Hotpot', source: DEMO_MEAL_PHOTOS.tableFeast },
 ];
 
