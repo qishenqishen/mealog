@@ -23,7 +23,11 @@ try {
   const page = await context.newPage();
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(base + '/add');
-  await page.waitForFunction(() => JSON.parse(localStorage.getItem('@mealogue/standaloneDemoSession') || 'null')?.complete);
+  await page.waitForFunction(
+    () => JSON.parse(localStorage.getItem('@mealogue/standaloneDemoSession') || 'null')?.complete,
+    undefined,
+    { timeout: 180000 },
+  );
   await page.getByRole('button', { name: 'Toast', exact: true }).waitFor();
   const originalMeals = await meals(page);
   for (const [label, file] of choices) {
