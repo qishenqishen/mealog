@@ -63,7 +63,7 @@ try {
   await page.getByRole('tab', { name: 'Add', exact: true }).click();
   await page.getByLabel('Meal name', { exact: true }).fill('Dumplings folded with Amy');
   await page.getByLabel('Note', { exact: true }).fill('We folded dumplings together. Amy made a tiny star-shaped one, and we laughed about it.');
-  await page.getByRole('button', { name: 'Cake', exact: true }).click();
+  await page.getByRole('button', { name: 'Berry toast', exact: true }).click();
   await page.getByRole('button', { name: 'Heartfelt', exact: true }).click();
   await page.getByRole('button', { name: 'Save meal memory', exact: true }).click();
   await page.waitForURL(/\/meal\//);
