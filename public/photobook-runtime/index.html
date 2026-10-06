@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Mealog · A month at the table</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="room">
+  <header class="book-header">
+    <button type="button" id="close" class="text-button">← <span>Bookshelf</span></button>
+    <div class="book-heading"><span class="eyebrow">MEALOG · MONTHLY EDITION</span><h1 id="book-title">A month at the table</h1></div>
+    <button type="button" id="jump-archive" class="text-button"><span>Index</span> ↗</button>
+  </header>
+  <section class="stage" aria-label="Interactive photo book">
+    <div class="book-rig"><div id="book" class="book" data-page-width="480" data-page-height="640"></div></div>
+    <p id="book-error" role="alert" hidden></p>
+  </section>
+  <footer class="controls" aria-label="Book controls">
+    <button id="previous" type="button" aria-label="Previous page" disabled>←</button>
+    <div class="status" aria-live="polite"><span id="page-status">Cover</span><small id="turn-hint">Drag or use arrow keys</small></div>
+    <button id="next" type="button" aria-label="Next page" disabled>→</button>
+  </footer>
+</main>
+<script src="vendor/page-flip.browser.js"></script>
+<script src="flipbook.js"></script>
+</body>
+</html>

@@ -13,11 +13,12 @@ Open that link on your phone or computer. No account, download, or installation 
 ## A Small Journey
 
 1. Explore the table on Home.
-2. Open Add. Take a photo, choose from your library, or use a sample food photo; add a meal name, mood, note, and a companion. Location is optional and read only when you ask.
-3. Save and open the meal detail. You can edit the photo or details later.
-4. Revisit it in Archive, the calendar, and month memories. Open a person's page to see your shared meals.
-5. In Insights, choose **My table** or **Sample table** and a month. You can generate an optional AI reflection, open the meals it refers to, and save a monthly thought **in your own words**.
-6. Check Collection as your memories grow, then return to Add.
+2. On Home, use Add a chair to save someone with just a name, even before your first meal. Their table opens shared meals and a Record a meal together action.
+3. Open Add. Take a photo, choose from your library, or expand sample photos. Choose or add companions beside the optional name and note; More details contains meal type, date, mood and location. An unfilled companion field stays unknown; choose Dining alone explicitly to mark a solo meal. Moving from a person’s table back to an existing draft preserves photos and text.
+4. Save and open the meal detail. You can edit the photo or details later.
+5. Revisit it in Archive: small monthly photobooks use that month’s original table illustration as their covers. Open a book to turn through the photos and your own notes, ending in a food index that links to each meal. Tap a companion’s name to revisit their table; returning keeps your page. The sticker calendar, photo view, and separate Food album remain available. Personal and sample books stay separate.
+6. In Insights, choose **My table** or **Sample table** and a month. You can generate an optional AI reflection, open the meals it refers to, and save a monthly thought **in your own words**.
+7. Collection shows earned keepsakes and their dates first. Open one to revisit its meal, or expand other keepsakes.
 
 Use the profile button on Home to switch English/中文 or clear the untouched sample memories. Your additions and edited samples are kept. User-written titles, notes, and names are never automatically translated.
 
@@ -30,6 +31,12 @@ This is **local managed storage, not cloud photo backup**. Clearing this site's 
 记录和照片保存在当前设备、当前浏览器。Mealog 会保存照片副本，不依赖你之后是否保留相册原图。但清除网站数据会丢失本地记录；本版没有账号同步或云端照片备份。
 
 ## About AI
+
+**Food stickers:** the browser can cut out the main food subject locally, saving a separate transparent PNG with a white edge. Photos are not uploaded for this feature. First use downloads the on-device tools (about 16 MB); subsequent work reuses browser caching. The album can process existing photos, stop after the current one, and retry unfinished photos. You can also import a transparent PNG from a meal's details. Complex backgrounds or multiple dishes may need manual preparation. Making stickers requires a recent browser with Web Workers, OffscreenCanvas and WebAssembly; native Expo builds can display saved stickers but do not run this browser tool.
+
+餐食贴纸：保存照片后可自动制作，或在“回忆 → 饮食图册”中批量制作已有照片。贴纸与原图分别保存；编辑小记保留贴纸，更换原图会使旧贴纸失效。复杂照片可以在餐食详情中导入已抠好的透明 PNG。抠图在设备上进行，不发送餐食照片。
+
+The small [U²-Net model](https://github.com/xuebinqin/U-2-Net) (Apache 2.0) uses the [rembg ONNX release](https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx), MD5 `8e83ca70e441ab06c318d82300c84806`; [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/deploy.html) 1.22.0 is MIT licensed. Licenses are included in `public/stickers`; pinned runtime files are copied from npm during web startup/export. No cloud segmentation API is used.
 
 Insights uses Cloudflare Workers AI, not a scripted imitation. Generation happens only when you press the button. Sample memories and your personal meals are kept separate. Selected meal titles, dates, tags and photo-presence flags are sent for processing; image files, GPS coordinates, and person profiles are not sent. Meal notes are excluded by default. Turn on **Include meal notes** to also send up to 240 characters from each note, including any personal details you have written there.
 
@@ -83,3 +90,17 @@ Set `MEALOG_URL` to test a deployed build. To use installed Chrome instead of Pl
 Built with Expo / React Native Web, TypeScript, IndexedDB, and Cloudflare Workers AI.
 
 See [release and setup notes](docs/BUILD_AND_RELEASE.md), [AI implementation notes](docs/INSIGHTS_AI_REPORT_NOTES.md), [original vision / MVP review](docs/PROPOSAL_MVP_REVIEW.md), and [MVP acceptance results](docs/STANDALONE_MVP_QA.md).
+
+## Monthly photobooks / 月度相册
+
+回忆页以每月一本的书架为入口，手机两列、宽屏多列；封面复用每个月原有的餐桌插画。当前年份显示已经到来的月份，无记录月份明确标记，打开后不填充示例。书内完整呈现该月原照片、日期及小记，末尾食物索引优先使用已有贴纸，无贴纸时显示原图。点击索引回到对应餐食，返回时继续上次阅读位置。
+
+Web uses the local PageFlip runtime and fonts bundled with `create-photo-flipbook-ui`; licenses are included in `public/photobook-runtime`. Photos are not sent to a new service. Mouse/touch, visible page buttons, keyboard arrows, and reduced-motion navigation are supported. Native retains a button-paged reader; animated turning is currently a web feature.
+
+本轮本地实现及验收：2026-09-12；尚未发布到线上链接。
+
+## Pastel keepsakes / 淡彩收藏
+
+收藏使用 57 张透明底、细颗粒淡彩插画，每张只有一个水果、饮品或餐桌小物件。浅粉、杏桃、奶油黄、鼠尾草绿、雾蓝与淡紫统一在清淡的色调中。所有收藏展示共用 `AchievementStamp`，原有图标 key、成就规则和隐藏条件保持稳定。
+
+项目素材与内置 image_gen 的完整提示词／原图来源见 [pastel-v1](assets/keepsakes/pastel-v1/README.md)。部署使用保留透明通道的 384px PNG，页面继续按需加载图片；原素材留存以便比较。本轮为本地视觉更新，未部署。

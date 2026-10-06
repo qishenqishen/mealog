@@ -52,6 +52,11 @@ const PERSONS: Array<{
   relationship?: PersonRelationship;
   note?: string;
 }> = [
+  { id: 'demo-person-joey', name: 'Joey', relationship: 'Friend', note: 'Sample table companion.' },
+  { id: 'demo-person-lily', name: 'Lily', relationship: 'Friend', note: 'Sample table companion.' },
+  { id: 'demo-person-belle', name: 'Belle', relationship: 'Friend', note: 'Sample table companion.' },
+  { id: 'demo-person-denis', name: 'Denis', relationship: 'Friend', note: 'Sample table companion.' },
+  { id: 'demo-person-jennie', name: 'Jennie', relationship: 'Friend', note: 'Sample table companion.' },
   {
     id: 'demo-person-amy',
     name: 'Amy',
@@ -91,6 +96,7 @@ interface DemoSession {
   anchorDate: string;
   complete: boolean;
   result?: DemoSeedResult;
+  peopleVersion?: 2;
   photoCollectionVersion?: 1;
   photoCollectionAnchorDate?: string;
 }
@@ -271,7 +277,7 @@ const CURRENT_MONTH_MEALS: DemoMealInput[] = [
     location: 'Window cafe',
     moodTags: ['peaceful'],
     peopleTags: ['shared-with-friend'],
-    personIds: ['demo-person-kai', 'demo-person-amy'],
+    personIds: ['demo-person-kai', 'demo-person-amy', 'demo-person-joey', 'demo-person-lily'],
     note: 'Kai, Amy and I were finishing our salads when it started raining. We stayed for another warm drink.',
     photoAsset: PHOTO_ASSETS.saladWindowTable,
   },
@@ -336,7 +342,7 @@ const PHOTO_COLLECTION_MEALS: DemoMealInput[] = [
   {
     id: 'demo-meal-current-photo-16', day: 16, mealType: 'treat', time: '16:10',
     title: 'Mango sticky rice to share', location: 'Afternoon table',
-    moodTags: ['peaceful'], peopleTags: ['shared-with-friend'], personIds: ['demo-person-jordan'],
+    moodTags: ['peaceful'], peopleTags: ['shared-with-friend'], personIds: ['demo-person-jordan', 'demo-person-belle', 'demo-person-denis', 'demo-person-jennie'],
     note: 'Two spoons and one plate of mango sticky rice.',
     photoAsset: PHOTO_ASSETS.mangoStickyRice,
   },
@@ -401,11 +407,21 @@ async function prepareDemoData(): Promise<DemoSeedResult> {
   const anchor = new Date(session.anchorDate);
   const anchorMonth = makeDate(anchor.getFullYear(), anchor.getMonth(), 1).slice(0, 7);
   const emptyResult = { mealsPrepared: 0, peoplePrepared: 0, sharedPhotosPrepared: 0, keepsakesFound: 0, anchorMonth };
-  if (session.complete) return expandPhotoCollection(session, userId, emptyResult);
+  if (session.complete) {
+    const existing = await getPeopleProfiles({ includeDeleted: true });
+    if (session.peopleVersion !== 2 && existing.some(person => person.origin === 'sample')) {
+      for (const person of PERSONS.filter(person => ['demo-person-joey', 'demo-person-lily', 'demo-person-belle', 'demo-person-denis', 'demo-person-jennie'].includes(person.id))) {
+        if (!existing.some(other => other.id === person.id)) await savePersonProfile({ ...person, userId, origin: 'sample', createdAt: session.anchorDate, updatedAt: session.anchorDate });
+      }
+    }
+    session.peopleVersion = 2;
+    await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session));
+    return expandPhotoCollection(session, userId, emptyResult);
+  }
 
   // Existing installations keep their own table. A persisted session makes new imports resumable.
   if (!raw && ((await getMeals()).length || (await getPeopleProfiles()).length)) {
-    await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({ ...session, complete: true, photoCollectionVersion: 1, result: emptyResult }));
+    await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({ ...session, complete: true, peopleVersion: 2, photoCollectionVersion: 1, result: emptyResult }));
     return emptyResult;
   }
   await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session));
@@ -487,7 +503,7 @@ async function prepareDemoData(): Promise<DemoSeedResult> {
     keepsakesFound: result.achievements.filter((achievement) => achievement.progress.unlockedAt).length,
     anchorMonth,
   };
-  await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({ ...session, complete: true, photoCollectionVersion: 1, result: summary }));
+  await AsyncStorage.setItem(DEMO_SESSION_KEY, JSON.stringify({ ...session, complete: true, peopleVersion: 2, photoCollectionVersion: 1, result: summary }));
   return summary;
 }
 

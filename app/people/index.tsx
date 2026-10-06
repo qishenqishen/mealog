@@ -11,20 +11,23 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import {
-  getPersonMealSummaries,
-  mergePersonProfiles,
+  getPeopleProfiles,
+  getMeals,
+  getMealCompanions,
+  getSharedMealPhotos,
   softDeletePersonProfile,
 } from '../../src/storage';
-import type { PersonMealSummary, PersonProfile } from '../../src/types';
-import { colors, shadow } from '../../src/theme';
+import type { MealCompanion, MealEntry, PersonProfile, SharedMealPhoto } from '../../src/types';
+import { colors, shadow, fonts } from '../../src/theme';
 import PersonAvatar from '../../src/components/PersonAvatar';
 import CreatePersonModal from '../../src/components/CreatePersonModal';
 import LoadState from '../../src/components/LoadState';
 
-type SortMode = 'recent' | 'count';
+import { peopleForScope } from '../../src/utils/people';
+import { scopeMeals, type BookScope } from '../../src/utils/monthlyBooks';
 
 function confirmDelete(person: PersonProfile, onConfirm: () => void) {
   const message = translate('This soft-deletes the profile only. Meal memories stay in the archive.');
@@ -40,26 +43,32 @@ function confirmDelete(person: PersonProfile, onConfirm: () => void) {
   ]);
 }
 
-function normalizeName(name: string): string {
-  return name.trim().toLowerCase();
-}
-
 export default function PeopleLibraryPage() {
   const { t, locale } = useI18n();
   const router = useRouter();
-  const [summaries, setSummaries] = useState<PersonMealSummary[]>([]);
+  const params = useLocalSearchParams<{ scope?: string }>();
+  const scope: BookScope = params.scope === 'sample' ? 'sample' : 'personal';
+  const setScope = (nextScope: BookScope) => router.setParams({ scope: nextScope });
+  const [people, setPeople] = useState<PersonProfile[]>([]);
+  const [meals, setMeals] = useState<MealEntry[]>([]);
+  const [companions, setCompanions] = useState<MealCompanion[]>([]);
+  const [photos, setPhotos] = useState<SharedMealPhoto[]>([]);
   const [query, setQuery] = useState('');
-  const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [editingPerson, setEditingPerson] = useState<PersonProfile | undefined>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const [merging, setMerging] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     try {
-      setSummaries(await getPersonMealSummaries());
+      const [nextPeople, nextMeals, nextCompanions, nextPhotos] = await Promise.all([
+        getPeopleProfiles(), getMeals(), getMealCompanions(), getSharedMealPhotos(),
+      ]);
+      setPeople(nextPeople);
+      setMeals(nextMeals);
+      setCompanions(nextCompanions);
+      setPhotos(nextPhotos);
     } catch {
       setError('Could not load people.');
     } finally {
@@ -73,14 +82,14 @@ export default function PeopleLibraryPage() {
     }, [refresh]),
   );
 
-  const duplicateGroups = useMemo(() => {
-    const groups = new Map<string, PersonMealSummary[]>();
-    for (const summary of summaries) {
-      const key = normalizeName(summary.person.name);
-      groups.set(key, [...(groups.get(key) ?? []), summary]);
-    }
-    return [...groups.values()].filter((group) => group.length > 1);
-  }, [summaries]);
+  const summaries = useMemo(() => {
+    const scopedMeals = scopeMeals(meals, scope);
+    return peopleForScope(people, meals, companions, scope, photos).map((person) => {
+      const ids = new Set(companions.filter((item) => item.personId === person.id).map((item) => item.mealId));
+      const dates = scopedMeals.filter((meal) => ids.has(meal.id)).map((meal) => meal.date).sort();
+      return { person, lastSharedMealDate: dates[dates.length - 1] };
+    });
+  }, [people, meals, companions, photos, scope]);
 
   const visibleSummaries = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -96,35 +105,9 @@ export default function PeopleLibraryPage() {
           person.note,
         ].some((value) => value?.toLowerCase().includes(needle));
       })
-      .sort((a, b) => {
-        if (sortMode === 'count') {
-          return b.sharedMealCount - a.sharedMealCount
-            || (b.lastSharedMealDate ?? '').localeCompare(a.lastSharedMealDate ?? '');
-        }
-        return (b.lastSharedMealDate ?? '').localeCompare(a.lastSharedMealDate ?? '')
-          || b.sharedMealCount - a.sharedMealCount;
-      });
-  }, [query, sortMode, summaries, t]);
-
-  const handleMergeDuplicates = async () => {
-    if (merging) return;
-    setMerging(true);
-    try {
-    for (const group of duplicateGroups) {
-      const sorted = [...group].sort((a, b) => a.person.createdAt.localeCompare(b.person.createdAt));
-      const keeper = sorted[0].person;
-      const duplicates = sorted.slice(1);
-      for (const duplicate of duplicates) {
-        await mergePersonProfiles(duplicate.person.id, keeper.id);
-      }
-    }
-    await refresh();
-    } catch {
-      setError('Could not merge these people. Please try again.');
-    } finally {
-      setMerging(false);
-    }
-  };
+      .sort((a, b) => (b.lastSharedMealDate ?? '').localeCompare(a.lastSharedMealDate ?? '')
+        || b.person.createdAt.localeCompare(a.person.createdAt));
+  }, [query, summaries, t]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -139,15 +122,15 @@ export default function PeopleLibraryPage() {
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           })}>
-            <Text style={styles.navButtonText}>{t("Add person")}</Text>
+            <Text style={styles.navButtonText}>{locale === 'zh' ? '＋ 加一把椅子' : '+ Add a chair'}</Text>
           </Pressable>
         </View>
 
         <View style={styles.header}>
           <Text style={styles.kicker}>{t("Meal companions")}</Text>
-          <Text style={styles.title}>{t("People at my table")}</Text>
+          <Text style={styles.title}>{locale === 'zh' ? '同桌的人' : 'People at my table'}</Text>
           <Text style={styles.subtitle}>
-            {t("Reusable people profiles for the meals you share. Mealog never reads contacts.")}</Text>
+            {locale === 'zh' ? '给一个人留个位置，也留住一起吃饭的日子。' : 'Save a seat for someone, and the meals you share.'}</Text>
         </View>
 
         <TextInput
@@ -160,31 +143,16 @@ export default function PeopleLibraryPage() {
         />
 
         <View style={styles.sortRow}>
-          {(['recent', 'count'] as const).map((mode) => {
-            const active = sortMode === mode;
-            return (
-              <Pressable
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                key={mode}
-                style={[styles.sortChip, active && styles.sortChipActive]}
-                onPress={() => setSortMode(mode)}
-              >
-                <Text style={[styles.sortText, active && styles.sortTextActive]}>
-                  {mode === 'recent' ? t('Recent shared') : t('Most shared')}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {(['personal', 'sample'] as const).map((option) => (
+            <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: scope === option }}
+              style={[styles.sortChip, scope === option && styles.sortChipActive]} onPress={() => setScope(option)}>
+              <Text style={[styles.sortText, scope === option && styles.sortTextActive]}>
+                {option === 'personal' ? (locale === 'zh' ? '我的同桌人' : 'My people') : (locale === 'zh' ? '示例人物' : 'Example people')}
+              </Text>
+            </Pressable>
+          ))}
         </View>
-
-        {duplicateGroups.length > 0 ? (
-          <Pressable accessibilityRole="button" style={styles.mergeNote} onPress={handleMergeDuplicates} disabled={merging}>
-            <Text style={styles.mergeTitle}>{t("Merge duplicate names")}</Text>
-            <Text style={styles.mergeBody}>
-              {t('{count} possible duplicate group found.', { count: duplicateGroups.length })}</Text>
-          </Pressable>
-        ) : null}
+        {scope === 'sample' ? <Text style={styles.scopeNote}>{locale === 'zh' ? '这些人物来自示例餐食。' : 'These people belong to the example meals.'}</Text> : null}
 
         <LoadState loading={loading} error={error} onRetry={refresh} />
         {visibleSummaries.length > 0 ? (
@@ -194,15 +162,15 @@ export default function PeopleLibraryPage() {
                 accessibilityRole="button"
                 key={summary.person.id}
                 style={styles.personRow}
-                onPress={() => router.push(`/people/${summary.person.id}`)}
+                onPress={() => router.push({ pathname: '/people/[id]', params: { id: summary.person.id, scope } })}
               >
                 <PersonAvatar person={summary.person} size={48} />
                 <View style={styles.personTextWrap}>
                   <Text style={styles.personName}>{summary.person.nickname ?? summary.person.name}</Text>
-                  <Text style={styles.personMeta}>
-                    {t(summary.person.relationship ?? 'A remembered seat')} · {t('{count} shared meals', { count: summary.sharedMealCount })}</Text>
+                  <Text style={styles.personMeta} numberOfLines={2}>
+                    {summary.person.note || t(summary.person.relationship ?? 'A remembered seat')}</Text>
                   <Text style={styles.personDate}>
-                    {t('Last shared: {date}', { date: summary.lastSharedMealDate ?? t('not yet') })}
+                    {summary.lastSharedMealDate ? t('Last shared: {date}', { date: summary.lastSharedMealDate }) : locale === 'zh' ? '位置已留好，下一餐再写下故事。' : 'A seat is saved for the next shared meal.'}
                   </Text>
                 </View>
                 <View style={styles.rowActions}>
@@ -236,12 +204,12 @@ export default function PeopleLibraryPage() {
         ) : loading || error ? null : (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyTitle}>
-              {query.trim() ? t('No one found.') : t('No one has taken a seat yet.')}
+              {query.trim() ? t('No one found.') : scope === 'sample' ? (locale === 'zh' ? '暂无示例人物' : 'No example people') : locale === 'zh' ? '为想记住的人，留个位置。' : 'Save a seat for someone you want to remember.'}
             </Text>
             <Text style={styles.emptyBody}>
               {query.trim()
                 ? t('Add this person to your table.')
-                : t('Add someone the next time you share a meal.')}
+                : locale === 'zh' ? (scope === 'sample' ? '你的同桌人会留在「我的同桌人」里。' : '不必等到下一餐，只写一个称呼就能添加。') : (scope === 'sample' ? 'Your people stay in My people.' : 'You can add a name before your next meal together.')}
             </Text>
           </View>
         )}
@@ -252,8 +220,9 @@ export default function PeopleLibraryPage() {
         person={editingPerson?.id ? editingPerson : undefined}
         onClose={() => setEditingPerson(undefined)}
         onSaved={async () => {
-          setEditingPerson(undefined);
           await refresh();
+          setScope('personal');
+          setQuery('');
         }}
       />
     </SafeAreaView>
@@ -276,7 +245,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   navButton: {
-    borderRadius: 18,
+    borderRadius: 2,
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: 'rgba(255, 253, 248, 0.55)',
@@ -286,23 +255,21 @@ const styles = StyleSheet.create({
   navButtonText: {
     fontSize: 13,
     color: colors.primary,
-    fontStyle: 'italic',
   },
   header: {
     marginBottom: 20,
   },
-  kicker: {
+  kicker: { fontFamily: fonts.body,
     fontSize: 12,
     color: colors.muted,
     marginBottom: 7,
   },
-  title: {
-    fontSize: 34,
-    lineHeight: 40,
+  title: { fontFamily: fonts.editorial,
+    fontSize: 26,
+    lineHeight: 32,
     color: colors.primary,
-    fontStyle: 'italic',
   },
-  subtitle: {
+  subtitle: { fontFamily: fonts.body,
     marginTop: 8,
     maxWidth: 320,
     fontSize: 14,
@@ -336,28 +303,14 @@ const styles = StyleSheet.create({
   sortText: {
     fontSize: 12,
     color: colors.mutedText,
-    fontStyle: 'italic',
   },
   sortTextActive: {
     color: colors.secondary,
   },
-  mergeNote: {
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    marginBottom: 16,
-    backgroundColor: 'rgba(255, 253, 248, 0.58)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(180, 145, 88, 0.28)',
-  },
-  mergeTitle: {
-    fontSize: 15,
-    color: colors.primary,
-    fontStyle: 'italic',
-    marginBottom: 4,
-  },
-  mergeBody: {
+  scopeNote: {
+    marginBottom: 14,
     fontSize: 12,
+    lineHeight: 18,
     color: colors.mutedText,
   },
   peopleList: {
@@ -367,7 +320,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 22,
+    borderRadius: 2,
     paddingHorizontal: 13,
     paddingVertical: 12,
     backgroundColor: 'rgba(255, 253, 248, 0.68)',
@@ -376,10 +329,9 @@ const styles = StyleSheet.create({
   personTextWrap: {
     flex: 1,
   },
-  personName: {
+  personName: { fontFamily: fonts.editorial,
     fontSize: 17,
     color: colors.primary,
-    fontStyle: 'italic',
   },
   personMeta: {
     marginTop: 3,
@@ -403,7 +355,6 @@ const styles = StyleSheet.create({
   smallButtonText: {
     fontSize: 11,
     color: colors.secondary,
-    fontStyle: 'italic',
   },
   deleteButton: {
     borderRadius: 13,
@@ -414,10 +365,9 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: 11,
     color: colors.destructive,
-    fontStyle: 'italic',
   },
   emptyBox: {
-    borderRadius: 22,
+    borderRadius: 2,
     paddingHorizontal: 18,
     paddingVertical: 22,
     backgroundColor: 'rgba(255, 253, 248, 0.58)',
@@ -425,10 +375,9 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: 'rgba(185, 165, 138, 0.28)',
   },
-  emptyTitle: {
-    fontSize: 20,
+  emptyTitle: { fontFamily: fonts.editorial,
+    fontSize: 18,
     color: colors.primary,
-    fontStyle: 'italic',
     marginBottom: 7,
   },
   emptyBody: {

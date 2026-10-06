@@ -17,6 +17,7 @@ import type {
   SharedMealPhoto,
 } from '../types';
 import { generateId } from '../utils/id';
+import { companionTags } from '../utils/people';
 import { getCurrentUserId } from '../auth';
 import {
   assertManagedMediaReadable,
@@ -45,6 +46,12 @@ export const STORAGE_KEYS = {
   mediaMigrationReport: '@mealogue/mediaMigrationReport',
   insightsCache: '@mealogue/insightsCache/v1',
   monthlyReflections: '@mealogue/monthlyReflections/v1',
+  trash: '@mealogue/trash/v1',
+  freeMemories: '@mealogue/freeMemories/v1',
+  memoryCards: '@mealogue/memoryCards/v1',
+  productEvents: '@mealogue/productEvents/v1',
+  productPreferences: '@mealogue/productPreferences/v1',
+  mealDraft: '@mealogue/mealDraft/v1',
 } as const;
 
 export const KEYS = STORAGE_KEYS;
@@ -85,6 +92,7 @@ const MEMORY_KEYS = [
   STORAGE_KEYS.peopleTags,
   STORAGE_KEYS.mealCompanions,
   STORAGE_KEYS.sharedMealPhotos,
+  STORAGE_KEYS.trash,
 ];
 const pendingWrites = new Map<string, Promise<unknown>>();
 
@@ -225,6 +233,8 @@ function normalizeMeal(meal: StoredMeal): MealEntry | null {
   return {
     id: meal.id,
     origin: meal.origin,
+    archivedAt: meal.archivedAt,
+    sourceFingerprint: meal.sourceFingerprint,
     userId: meal.userId,
     title: meal.title?.trim() || meal.note?.trim() || fallbackTitle,
     mealType: meal.mealType,
@@ -235,6 +245,8 @@ function normalizeMeal(meal: StoredMeal): MealEntry | null {
     photoUri: meal.photoUri,
     photoThumbnailUri: meal.photoThumbnailUri,
     photoStorageStatus: meal.photoStorageStatus as MealEntry['photoStorageStatus'],
+    stickerMediaId: meal.stickerMediaId,
+    stickerUri: meal.stickerUri,
     location: meal.location ?? meal.locationText,
     locationDetails: meal.locationDetails,
     moodTags,
@@ -267,7 +279,6 @@ async function getStoredMeals(): Promise<MealEntry[]> {
 }
 
 async function hydrateMealMedia(meal: MealEntry): Promise<MealEntry> {
-  if (!meal.photoMediaId) return meal;
   return {
     ...meal,
     photoUri: await resolveManagedMediaUri(meal.photoMediaId, meal.photoUri),
@@ -275,6 +286,7 @@ async function hydrateMealMedia(meal: MealEntry): Promise<MealEntry> {
       meal.photoMediaId,
       meal.photoThumbnailUri ?? meal.photoUri,
     ),
+    stickerUri: await resolveManagedMediaUri(meal.stickerMediaId, meal.stickerUri),
   };
 }
 
@@ -305,6 +317,13 @@ async function prepareMeal(meal: MealEntry, existing?: MealEntry): Promise<MealE
   if (!normalized) {
     throw new Error('Mealog could not save an incomplete meal entry.');
   }
+
+  // A text-only edit keeps the cutout; changing its source photo invalidates it.
+  const samePhoto = existing && (meal.photoMediaId
+    ? meal.photoMediaId === existing.photoMediaId
+    : meal.photoUri === existing.photoUri);
+  normalized.stickerMediaId = samePhoto ? existing.stickerMediaId : undefined;
+  normalized.stickerUri = samePhoto ? existing.stickerUri : undefined;
 
   if (normalized.photoMediaId || normalized.photoUri) {
     const media = normalized.photoMediaId
@@ -342,12 +361,14 @@ function upsertMeal(meals: MealEntry[], normalized: MealEntry): MealEntry[] {
 export async function saveMeal(meal: MealEntry): Promise<void> {
   return withStorageKeys(MEMORY_KEYS, async () => {
     const meals = await getStoredMeals();
-    const normalized = await prepareMeal(meal, meals.find((item) => item.id === meal.id));
+    const existing = meals.find((item) => item.id === meal.id);
+    const normalized = await prepareMeal(meal, existing);
     try {
       await writeLists([[STORAGE_KEYS.meals, upsertMeal(meals, normalized)]]);
     } catch (error) {
       await discardFailedImport(meal.photoMediaId ? undefined : normalized.photoMediaId, error);
     }
+    if (existing?.stickerMediaId !== normalized.stickerMediaId) await deleteManagedMediaIfUnreferenced(existing?.stickerMediaId);
   });
 }
 
@@ -359,7 +380,8 @@ export async function saveMealMemory(meal: MealEntry, personIds: string[]): Prom
     const people = await getStoredPeopleProfiles();
     const ids = [...new Set(personIds.filter(Boolean))];
     const nextCompanions = await companionsForMeal(meal.id, ids, companions, people);
-    const normalized = await prepareMeal({ ...meal, personIds: ids }, meals.find((item) => item.id === meal.id));
+    const existing = meals.find((item) => item.id === meal.id);
+    const normalized = await prepareMeal({ ...meal, personIds: ids, peopleTags: companionTags(meal.peopleTags, ids) }, existing);
     try {
       await writeLists([
         [STORAGE_KEYS.meals, upsertMeal(meals, normalized)],
@@ -370,6 +392,7 @@ export async function saveMealMemory(meal: MealEntry, personIds: string[]): Prom
     } catch (error) {
       await discardFailedImport(meal.photoMediaId ? undefined : normalized.photoMediaId, error);
     }
+    if (existing?.stickerMediaId !== normalized.stickerMediaId) await deleteManagedMediaIfUnreferenced(existing?.stickerMediaId);
   });
 }
 
@@ -387,9 +410,33 @@ export async function deleteMeal(id: string): Promise<void> {
     ]);
 
     await deleteManagedMediaIfUnreferenced(mealToDelete?.photoMediaId);
+    await deleteManagedMediaIfUnreferenced(mealToDelete?.stickerMediaId);
     await Promise.all(photosToDelete.map((photo) => deleteManagedMediaIfUnreferenced(photo.mediaId)));
     await Promise.all(companions.filter((item) => item.mealId === id)
       .map((item) => deleteManagedMediaIfUnreferenced(item.personAvatarMediaIdSnapshot)));
+  });
+}
+
+/** Attach only the cutout, without overwriting edits made while segmentation ran. */
+export async function saveMealSticker(sourceMeal: MealEntry, stickerUri: string): Promise<void> {
+  return withStorageKeys(MEMORY_KEYS, async () => {
+    const meals = await getStoredMeals();
+    const current = meals.find((item) => item.id === sourceMeal.id);
+    if (!current || !current.photoUri || !sourceMeal.photoUri || (sourceMeal.photoMediaId
+      ? sourceMeal.photoMediaId !== current.photoMediaId
+      : sourceMeal.photoUri !== current.photoUri)) {
+      throw new Error('The source photo changed. Please try again with the current photo.');
+    }
+    const media = await importImageToManagedStore({
+      sourceUri: stickerUri, ownerType: 'meal', ownerId: current.id,
+      userId: current.userId, mimeType: 'image/png', originalFileName: 'food-sticker.png',
+    });
+    const previous = current.stickerMediaId;
+    current.stickerMediaId = media.id;
+    current.stickerUri = media.localManagedUri;
+    try { await writeLists([[STORAGE_KEYS.meals, meals]]); }
+    catch (error) { await discardFailedImport(media.id, error); }
+    await deleteManagedMediaIfUnreferenced(previous);
   });
 }
 
@@ -604,7 +651,7 @@ export async function softDeletePersonProfile(id: string): Promise<void> {
 
 export async function mergePersonProfiles(sourcePersonId: string, targetPersonId: string): Promise<void> {
   if (sourcePersonId === targetPersonId) return;
-  return withStorageKeys(MEMORY_KEYS, async () => {
+  return withStorageKeys([...MEMORY_KEYS, STORAGE_KEYS.freeMemories, STORAGE_KEYS.memoryCards], async () => {
     const people = await getStoredPeopleProfiles();
     if (!people.some((person) => person.id === targetPersonId && !person.deletedAt)) {
       throw new Error('The person to merge into could not be found.');
@@ -612,7 +659,7 @@ export async function mergePersonProfiles(sourcePersonId: string, targetPersonId
     const companions = await getStoredMealCompanions();
     const remapped = companions.map((companion) => (
       companion.personId === sourcePersonId
-        ? { ...companion, personId: targetPersonId }
+        ? { ...companion, personId: targetPersonId, personNameSnapshot: people.find(person => person.id === targetPersonId)?.name }
         : companion
     ));
     const unique = new Map<string, MealCompanion>();
@@ -627,9 +674,11 @@ export async function mergePersonProfiles(sourcePersonId: string, targetPersonId
     const now = new Date().toISOString();
     const remap = (ids: string[]) => [...new Set(ids.map((id) => id === sourcePersonId ? targetPersonId : id))];
     await writeLists([
+      [STORAGE_KEYS.freeMemories, (await getList<{ personIds: string[] }>(STORAGE_KEYS.freeMemories)).map(item => ({ ...item, personIds: remap(item.personIds) }))],
+      [STORAGE_KEYS.memoryCards, (await getList<{ personId?: string }>(STORAGE_KEYS.memoryCards)).map(item => ({ ...item, personId: item.personId === sourcePersonId ? targetPersonId : item.personId }))],
       [STORAGE_KEYS.mealCompanions, [...unique.values()]],
       [STORAGE_KEYS.meals, meals.map((meal) => meal.personIds?.includes(sourcePersonId)
-        ? { ...meal, origin: 'user', personIds: remap(meal.personIds), updatedAt: now } : meal)],
+        ? { ...meal, origin: 'user', personIds: remap(meal.personIds), peopleTags: remap(meal.peopleTags), updatedAt: now } : meal)],
       [STORAGE_KEYS.sharedMealPhotos, photos.map((photo) => photo.taggedPersonIds.includes(sourcePersonId)
         ? { ...photo, origin: 'user', taggedPersonIds: remap(photo.taggedPersonIds) } : photo)],
       [STORAGE_KEYS.peopleProfiles, people.map((person) => person.id === sourcePersonId
@@ -788,6 +837,7 @@ async function setMealCompanionsStored(
   mealId: string,
   personIds: string[],
   notes?: Record<string, string | undefined>,
+  alone?: boolean,
 ): Promise<MealCompanion[]> {
   const meals = await getStoredMeals();
   const meal = meals.find((item) => item.id === mealId);
@@ -797,7 +847,7 @@ async function setMealCompanionsStored(
   const nextForMeal = await companionsForMeal(mealId, ids, companions, await getStoredPeopleProfiles(), notes);
   await writeLists([
     [STORAGE_KEYS.meals, meals.map((item) => item.id === mealId
-      ? { ...item, origin: 'user', personIds: ids, updatedAt: new Date().toISOString() } : item)],
+      ? { ...item, origin: 'user', personIds: ids, peopleTags: companionTags(item.peopleTags, ids, alone), updatedAt: new Date().toISOString() } : item)],
     [STORAGE_KEYS.mealCompanions, [...companions.filter((item) => item.mealId !== mealId), ...nextForMeal]],
   ]);
   return nextForMeal;
@@ -807,8 +857,9 @@ export async function setMealCompanions(
   mealId: string,
   personIds: string[],
   notes?: Record<string, string | undefined>,
+  alone?: boolean,
 ): Promise<MealCompanion[]> {
-  return withStorageKeys(MEMORY_KEYS, () => setMealCompanionsStored(mealId, personIds, notes));
+  return withStorageKeys(MEMORY_KEYS, () => setMealCompanionsStored(mealId, personIds, notes, alone));
 }
 
 export async function addMealCompanion(
@@ -968,6 +1019,8 @@ export async function saveSharedMealPhoto(photo: SharedMealPhoto): Promise<Share
     }
 
     const changes: [string, unknown[]][] = [[STORAGE_KEYS.sharedMealPhotos, nextPhotos]];
+    const replacedSticker = normalized.isCover && meals.find((meal) => meal.id === normalized.mealId
+      && meal.photoMediaId !== normalized.mediaId)?.stickerMediaId;
     if (normalized.isCover || normalized.origin === 'user') {
       changes.push([STORAGE_KEYS.meals, meals.map((meal) => meal.id === normalized.mealId ? {
         ...meal,
@@ -978,6 +1031,8 @@ export async function saveSharedMealPhoto(photo: SharedMealPhoto): Promise<Share
           photoUri: normalized.imageUrl,
           photoThumbnailUri: normalized.thumbnailUri,
           photoStorageStatus: normalized.storageStatus,
+          stickerMediaId: meal.photoMediaId === normalized.mediaId ? meal.stickerMediaId : undefined,
+          stickerUri: meal.photoMediaId === normalized.mediaId ? meal.stickerUri : undefined,
         } : {}),
       } : meal)]);
     }
@@ -987,6 +1042,7 @@ export async function saveSharedMealPhoto(photo: SharedMealPhoto): Promise<Share
       await discardFailedImport(photo.mediaId ? undefined : normalized.mediaId, error);
     }
 
+    if (replacedSticker) await deleteManagedMediaIfUnreferenced(replacedSticker);
     return normalized;
   });
 }
@@ -1153,10 +1209,12 @@ async function deleteManagedMediaIfUnreferenced(mediaId?: string): Promise<void>
     getList<MealCompanion>(STORAGE_KEYS.mealCompanions),
     getManagedMediaById(mediaId),
   ]);
+  const trash = await getList<TrashedMemory>(STORAGE_KEYS.trash);
+  if (trash.some(item => JSON.stringify(item).includes(mediaId))) return;
 
   const matchesUri = (uri?: string) => Boolean(uri && (uri === media?.localManagedUri || uri === media?.thumbnailUri));
-  const stillReferenced = meals.some((meal) => meal.photoMediaId === mediaId
-    || matchesUri(meal.photoUri) || matchesUri(meal.photoThumbnailUri))
+  const stillReferenced = meals.some((meal) => meal.photoMediaId === mediaId || meal.stickerMediaId === mediaId
+    || matchesUri(meal.photoUri) || matchesUri(meal.photoThumbnailUri) || matchesUri(meal.stickerUri))
     || people.some((person) => person.avatarMediaId === mediaId || matchesUri(person.avatarUrl) || matchesUri(person.avatarUri))
     || photos.some((photo) => photo.mediaId === mediaId || matchesUri(photo.imageUrl) || matchesUri(photo.thumbnailUri))
     || companions.some((item) => item.personAvatarMediaIdSnapshot === mediaId || matchesUri(item.personAvatarSnapshot));
@@ -1374,12 +1432,13 @@ export async function removeSampleData(): Promise<void> {
     const removedCompanions = companions.filter((item) => removedMealIds.has(item.mealId));
     const mediaIds = new Set([
       ...removedMeals.map((meal) => meal.photoMediaId),
+      ...removedMeals.map((meal) => meal.stickerMediaId),
       ...removedPeople.map((person) => person.avatarMediaId),
       ...removedPhotos.map((photo) => photo.mediaId),
       ...removedCompanions.map((item) => item.personAvatarMediaIdSnapshot),
     ].filter((id): id is string => Boolean(id)));
     const removedUris = new Set([
-      ...removedMeals.flatMap((meal) => [meal.photoUri, meal.photoThumbnailUri]),
+      ...removedMeals.flatMap((meal) => [meal.photoUri, meal.photoThumbnailUri, meal.stickerUri]),
       ...removedPeople.map((person) => person.avatarUrl),
       ...removedPhotos.flatMap((photo) => [photo.imageUrl, photo.thumbnailUri]),
       ...removedCompanions.map((item) => item.personAvatarSnapshot),
@@ -1403,4 +1462,68 @@ export async function removeSampleData(): Promise<void> {
 
 export async function clearAll(): Promise<void> {
   await withStorageKeys(Object.values(STORAGE_KEYS), () => AsyncStorage.multiRemove(Object.values(STORAGE_KEYS)));
+}
+
+export interface TrashedMemory { meal: MealEntry; companions: MealCompanion[]; photos: SharedMealPhoto[]; deletedAt: string }
+export async function getTrash(): Promise<TrashedMemory[]> {
+  const items = await getList<TrashedMemory>(STORAGE_KEYS.trash);
+  return Promise.all(items.map(async item => ({ ...item, meal: await hydrateMealMedia(item.meal) })));
+}
+export async function trashMeal(id: string): Promise<void> {
+  await withStorageKeys(MEMORY_KEYS, async () => {
+    const meals = await getStoredMeals(); const meal = meals.find(item => item.id === id);
+    if (!meal) return;
+    const companions = await getStoredMealCompanions(), photos = await getStoredSharedMealPhotos();
+    const trash = await getList<TrashedMemory>(STORAGE_KEYS.trash);
+    await writeLists([
+      [STORAGE_KEYS.trash, [...trash.filter(item => item.meal.id !== id), { meal, companions: companions.filter(item => item.mealId === id), photos: photos.filter(item => item.mealId === id), deletedAt: new Date().toISOString() }]],
+      [STORAGE_KEYS.meals, meals.filter(item => item.id !== id)],
+      [STORAGE_KEYS.mealCompanions, companions.filter(item => item.mealId !== id)],
+      [STORAGE_KEYS.sharedMealPhotos, photos.filter(item => item.mealId !== id)],
+    ]);
+  });
+}
+export async function restoreMeal(id: string): Promise<void> {
+  await withStorageKeys(MEMORY_KEYS, async () => {
+    const trash = await getList<TrashedMemory>(STORAGE_KEYS.trash), entry = trash.find(item => item.meal.id === id);
+    if (!entry) throw new Error('Memory not found in trash');
+    const meals = await getStoredMeals();
+    if (meals.some(item => item.id === id)) throw new Error('This memory already exists');
+    const companions = await getStoredMealCompanions(), photos = await getStoredSharedMealPhotos();
+    await writeLists([[STORAGE_KEYS.meals, [...meals, entry.meal]], [STORAGE_KEYS.mealCompanions, [...companions, ...entry.companions]],
+      [STORAGE_KEYS.sharedMealPhotos, [...photos, ...entry.photos]], [STORAGE_KEYS.trash, trash.filter(item => item.meal.id !== id)]]);
+  });
+}
+export async function setMealArchived(id: string, archived: boolean): Promise<void> {
+  await withStorageKeys(MEMORY_KEYS, async () => {
+    const meals = await getStoredMeals();
+    if (!meals.some(item => item.id === id)) throw new Error('Memory not found');
+    await writeLists([[STORAGE_KEYS.meals, meals.map(item => item.id === id ? { ...item, archivedAt: archived ? new Date().toISOString() : undefined } : item)]]);
+  });
+}
+/** Raw snapshots are serialized against application writes; images are immutable copies. */
+export async function readProductSnapshot(): Promise<Record<string, string>> {
+  return withStorageKeys(Object.values(STORAGE_KEYS), async () => {
+    const pairs = await Promise.all(Object.values(STORAGE_KEYS).map(async key => [key, await AsyncStorage.getItem(key)] as const));
+    return Object.fromEntries(pairs.filter((pair): pair is readonly [typeof pair[0], string] => pair[1] !== null));
+  });
+}
+export async function mergeProductSnapshot(values: Record<string, unknown[]>): Promise<void> {
+  const allowed = new Set<string>(Object.values(STORAGE_KEYS));
+  if (Object.entries(values).some(([key, items]) => !allowed.has(key) || !Array.isArray(items))) throw new Error('Invalid backup keys');
+  await withStorageKeys(Object.values(STORAGE_KEYS), async () => {
+    const changes: [string, unknown[]][] = [];
+    for (const [key, incoming] of Object.entries(values)) {
+      const current = await getList<Record<string, unknown>>(key);
+      const identity = (item: Record<string, unknown>) => String(item.id ?? item.achievementId ?? (item.meal as MealEntry | undefined)?.id ?? `${item.scope}:${item.month}`);
+      const seen = new Set(current.map(identity));
+      changes.push([key, [...current, ...incoming.filter(item => !seen.has(identity(item as Record<string, unknown>)))]]);
+    }
+    await writeLists(changes);
+  });
+}
+
+export async function mutateProductList<T>(key: string, change: (current: T[]) => T[]): Promise<void> {
+  if (!Object.values(STORAGE_KEYS).includes(key as typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS])) throw new Error('Unknown storage key');
+  await withStorageKeys([key], async () => writeLists([[key, change(await getList<T>(key))]]));
 }

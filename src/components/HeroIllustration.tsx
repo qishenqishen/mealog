@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { MonthKey, Season } from '../utils/season';
 import {
   getMonthKey,
@@ -39,7 +39,7 @@ export default function HeroIllustration({
   onPlatePress,
   onChairPress,
 }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { width: screenW, height: screenH } = useWindowDimensions();
   const [layoutWidth, setLayoutWidth] = useState<number>();
 
@@ -119,6 +119,7 @@ export default function HeroIllustration({
             <View style={styles.markerCrossHorizontal} />
             <View style={styles.markerCrossVertical} />
           </View>
+          <Text style={styles.markerLabel}>{locale === 'zh' ? '记下一餐' : 'Save meal'}</Text>
         </Pressable>
       )}
 
@@ -127,7 +128,7 @@ export default function HeroIllustration({
         <Pressable
           onPress={peoplePress}
           hitSlop={10}
-          accessibilityLabel={t('Remember who was around the {month} table', { month: t(getMonthLabel(resolvedMonth)).toLowerCase() })}
+          accessibilityLabel={locale === 'zh' ? '加一把椅子，添加同桌人' : 'Add a chair, save a person'}
           accessibilityRole="button"
           style={({ pressed }) => [
             styles.marker,
@@ -140,6 +141,7 @@ export default function HeroIllustration({
             <View style={styles.markerCrossHorizontal} />
             <View style={styles.markerCrossVertical} />
           </View>
+          <Text style={styles.markerLabel}>{locale === 'zh' ? '加椅子' : 'Add chair'}</Text>
         </Pressable>
       )}
     </View>
@@ -163,6 +165,12 @@ const styles = StyleSheet.create({
   markerPressed: {
     opacity: 0.86,
     transform: [{ scale: 1.08 }],
+  },
+  markerLabel: {
+    marginTop: 2,
+    fontSize: 10,
+    lineHeight: 13,
+    color: colors.primary,
   },
   markerGlow: {
     position: 'absolute',

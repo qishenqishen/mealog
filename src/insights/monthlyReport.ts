@@ -13,7 +13,7 @@ export function mealsForScope(meals: MealEntry[], scope: ReportScope): MealEntry
   return meals.filter((meal) => scope === 'sample' ? meal.origin === 'sample' : meal.origin !== 'sample');
 }
 
-function clip(value: string | undefined, max: number) {
+export function clip(value: string | undefined, max: number) {
   return (value ?? '').trim().slice(0, max).replace(/[\uD800-\uDBFF]$/, '');
 }
 
@@ -96,4 +96,19 @@ export async function generateMonthlyReport(input: MonthlyInput): Promise<Monthl
     if (error instanceof InsightError) throw error;
     throw new InsightError(controller.signal.aborted ? 'request_timeout' : 'network_error', 503);
   } finally { clearTimeout(timeout); }
+}
+
+/** The full local period stays available; the AI sees a bounded chronological sample. */
+export function makePeriodInput(meals: MealEntry[], start: string, end: string, period: 'week' | 'month' | 'year', locale: ReportLocale, includeNotes: boolean, privateTerms: string[] = []): MonthlyInput {
+  const selected = meals.filter(meal => meal.date >= start && meal.date <= end).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const bounded = selected.length <= 120 ? selected : Array.from({ length: 120 }, (_, index) => selected[Math.floor(index * selected.length / 120)]);
+  const redact = (text: string) => privateTerms.filter(Boolean).sort((a, b) => b.length - a.length).reduce((value, term) => value.split(term).join(locale === 'zh' ? '某人或某地' : '[private]'), text);
+  const result: MonthlyInput = { version: 1, month: start.slice(0, 7), locale, period, rangeStart: start, rangeEnd: end,
+    meals: bounded.map(meal => ({ id: meal.id, date: meal.date, title: clip(redact(meal.title), 80), mealType: meal.mealType,
+      moodTags: [...new Set(meal.moodTags.filter(tag => MOODS.includes(tag)))].sort(),
+      companyTags: [...new Set(meal.peopleTags.filter(tag => COMPANY.includes(tag)))].sort(),
+      note: includeNotes ? clip(redact(meal.note ?? ''), 240) : '', hasPhoto: Boolean(meal.photoMediaId || meal.photoUri) })) };
+  // ponytail: cap transmitted text to 60 KB; tighten the sample if a period is too large.
+  while (new TextEncoder().encode(inputSnapshot(result)).byteLength > 60000 && result.meals.length > 1) result.meals = result.meals.filter((_, index) => index % 2 === 0);
+  return result;
 }

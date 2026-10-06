@@ -12,13 +12,32 @@ try {
   const requested = new Set();
   page.on('request', (request) => { if (request.url().includes('/keepsakes/')) requested.add(request.url()); });
   await page.goto(base + '/collection');
-  await page.getByText('Keepsake Families', { exact: true }).waitFor({ timeout: 60000 });
+  await page.getByText(/^On your shelf · /).waitFor({ timeout: 60000 });
   await page.waitForTimeout(300);
   const initialRequests = requested.size;
   assert(initialRequests < 20, 'The whole shelf must not load on entry');
+  const earnedCount = await page.getByRole('button', { name: /, unlocked,/ }).count();
+  assert(earnedCount > 0, 'Sample meals should have earned keepsakes on the first shelf');
+  assert.equal(await page.getByText('Almost There', { exact: true }).count(), 0, 'Progress stays folded on entry');
+  assert.equal(await page.getByText('Keepsake Families', { exact: true }).count(), 0);
+  const nextShelf = page.getByRole('button', { name: 'Next keepsakes', exact: true });
+  if (await nextShelf.count()) {
+    let pageCount = 1;
+    while (await nextShelf.isEnabled()) {
+      await nextShelf.click(); pageCount++;
+      assert((await page.getByRole('button', { name: /, unlocked,/ }).count()) <= 6);
+      assert(pageCount < 100);
+    }
+    const previousShelf = page.getByRole('button', { name: 'Previous keepsakes', exact: true });
+    while (await previousShelf.isEnabled()) await previousShelf.click();
+  }
+  const explore = page.getByRole('button', { name: /Explore other keepsakes/ });
+  assert.equal(await explore.getAttribute('aria-expanded'), 'false');
+  await explore.click();
+  await page.getByText('Keepsake Families', { exact: true }).waitFor();
   const stamps = page.getByRole('button', { name: /, (unlocked|in progress|secret)/ });
   const count = await stamps.count();
-  assert(count >= 45);
+  assert(count >= 6, 'A shelf page and upcoming keepsakes remain available');
   for (let index = 0; index < count; index++) {
     const stamp = stamps.nth(index);
     await stamp.scrollIntoViewIfNeeded();
@@ -27,7 +46,10 @@ try {
   }
   assert(requested.size > initialRequests);
   await page.screenshot({ path: `${output}/last-shelf.png` });
-  results.push({ status: 'PASS', test: 'Only nearby art loads initially; every keepsake decodes after scrolling into view', initialRequests, finalRequests: requested.size, stamps: count });
+  await page.getByRole('button', { name: /Hide other keepsakes/ }).click();
+  assert.equal(await page.getByText('Almost There', { exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: /, unlocked,/ }).count(), earnedCount, 'Folding other keepsakes preserves the earned shelf');
+  results.push({ status: 'PASS', test: 'Earned keepsakes stay first; progress expands and folds; nearby art loads and all keepsakes decode after scrolling', initialRequests, finalRequests: requested.size, stamps: count, earnedCount });
   console.log(JSON.stringify(results, null, 2));
 } catch (error) {
   results.push({ status: 'FAIL', error: error.stack });

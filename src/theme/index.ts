@@ -1,21 +1,26 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 // ── Mealogue design tokens ──────────────────────────────────
 // Warm, quiet neutrals with restrained seasonal accents.
 
+export const fonts = {
+  editorial: Platform.select({ web: '"Iowan Old Style", "Songti SC", "Noto Serif CJK SC", "SimSun", Georgia, serif', ios: 'Songti SC', default: 'serif' }),
+  body: Platform.select({ web: '"Helvetica Neue", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif', ios: 'PingFang SC', default: 'sans-serif' }),
+} as const;
+
 export const colors = {
-  background: '#FFF8F0',
-  surface: '#FFFDF8',
-  surfaceWarm: '#FFF4E6',
-  primary: '#5C4033',
-  primaryBrown: '#5C4033',
-  secondary: '#8F735C',
-  text: '#4E382E',
-  muted: '#B9A58A',
-  mutedText: '#8D7B66',
-  border: '#EADFCC',
-  accent: '#F8E8D4',
-  accentSoft: '#FFF1E1',
+  background: '#F7F3E7',
+  surface: '#FCF9F0',
+  surfaceWarm: '#E8DFC8',
+  primary: '#201E16',
+  primaryBrown: '#201E16',
+  secondary: '#706A5C',
+  text: '#28261E',
+  muted: '#7B7D70',
+  mutedText: '#756F61',
+  border: '#A39C8C',
+  accent: '#F3C43C',
+  accentSoft: '#F2E9D4',
   destructive: '#C97862',
   destructiveSoft: '#F8E4DD',
   shadow: '#3E2B21',
@@ -66,18 +71,18 @@ export const radii = {
 // ── Typography ──────────────────────────────────────────────
 
 export const type = {
-  display: { fontSize: 34, fontWeight: '700' as const, letterSpacing: 0 },
-  title: { fontSize: 28, fontWeight: '700' as const, letterSpacing: 0 },
-  heading: { fontSize: 24, fontWeight: '700' as const, letterSpacing: 0 },
+  display: { fontFamily: fonts.editorial, fontSize: 28, fontWeight: '400' as const, letterSpacing: 0 },
+  title: { fontFamily: fonts.editorial, fontSize: 26, fontWeight: '400' as const, letterSpacing: 0 },
+  heading: { fontFamily: fonts.editorial, fontSize: 18, fontWeight: '400' as const, letterSpacing: 0 },
   body: { fontSize: 16 },
   bodySmall: { fontSize: 15 },
   caption: { fontSize: 14 },
   small: { fontSize: 13 },
   tiny: { fontSize: 12 },
   label: { fontSize: 14, fontWeight: '600' as const },
-  stat: { fontSize: 32, fontWeight: '700' as const },
+  stat: { fontSize: 32, fontWeight: '400' as const },
   tab: { fontSize: 11, fontWeight: '600' as const },
-  button: { fontSize: 17, fontWeight: '700' as const },
+  button: { fontSize: 17, fontWeight: '400' as const },
   buttonSmall: { fontSize: 16, fontWeight: '600' as const },
   eyebrow: { fontSize: 11, fontWeight: '600' as const, letterSpacing: 1 },
 } as const;

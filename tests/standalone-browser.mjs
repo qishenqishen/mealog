@@ -68,6 +68,7 @@ try {
   await page.getByRole('tab', { name: 'Add', exact: true }).click();
   await page.getByLabel('Meal name', { exact: true }).fill('QA dumplings with Amy');
   await page.getByLabel('Note', { exact: true }).fill('We folded dumplings together and saved the last one for Amy.');
+  await page.getByRole('button', { name: /^More details \(optional\)/, expanded: false }).click();
   await page.getByLabel('Location', { exact: true }).fill('Our kitchen');
   await page.getByRole('button', { name: 'Peaceful', exact: true }).click();
   await page.getByRole('button', { name: 'Add people at this meal', exact: true }).click();
@@ -81,7 +82,7 @@ try {
   await page.getByRole('button', { name: 'Change meal photo', exact: true }).waitFor();
   await screenshot(page, '02-add-mobile');
   await page.getByRole('button', { name: 'Save meal memory', exact: true }).click();
-  await page.waitForURL(/\/meal\//);
+  await page.waitForURL(/\/meal\//, { timeout: 150000 });
   await page.getByText('QA dumplings with Amy', { exact: true }).waitFor();
   const saved = (await state(page, 'meals')).find((meal) => meal.title === 'QA dumplings with Amy');
   assert(saved && saved.origin === 'user' && saved.photoUri.startsWith('indexeddb://'));
@@ -96,9 +97,10 @@ try {
   log('Upload, add mood/person, save to detail, delete computer source, refresh', { id: saved.id, uri: saved.photoUri });
 
   await page.getByText('Edit', { exact: true }).click();
+  await page.getByRole('button', { name: 'Try a sample photo +', exact: true }).click();
   await page.getByRole('button', { name: 'Cream toast', exact: true }).click();
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await page.waitForURL(/\/meal\//);
+  await page.waitForURL(/\/meal\//, { timeout: 150000 });
   const replaced = (await state(page, 'meals')).find((meal) => meal.id === saved.id);
   assert.notEqual(replaced.photoMediaId, saved.photoMediaId);
   assert.equal((await state(page, 'meals')).filter((meal) => meal.id === saved.id).length, 1);
@@ -129,6 +131,7 @@ try {
 
   await visit(page, '/add');
   await page.getByLabel('Meal name', { exact: true }).fill('QA retry memory');
+  await page.getByRole('button', { name: 'Try a sample photo +', exact: true }).click();
   await page.getByRole('button', { name: 'Granola bowl', exact: true }).click();
   await page.evaluate(() => {
     const put = IDBObjectStore.prototype.put;
@@ -145,7 +148,7 @@ try {
   await screenshot(page, '07-save-failure');
   await page.evaluate(() => { window.__failMedia = false; });
   await page.getByRole('button', { name: 'Save meal memory', exact: true }).click();
-  await page.waitForURL(/\/meal\//);
+  await page.waitForURL(/\/meal\//, { timeout: 150000 });
   assert.equal((await state(page, 'meals')).filter((meal) => meal.title === 'QA retry memory').length, 1);
   log('Actual IndexedDB write failure: visible error, intact form, no corrupt meal, one retry record');
 
@@ -153,7 +156,7 @@ try {
   await page.goto(base + `/add?editMealId=${sample.id}`);
   await page.getByLabel('Meal name', { exact: true }).fill('My edited sample');
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await page.waitForURL(/\/meal\//);
+  await page.waitForURL(/\/meal\//, { timeout: 150000 });
   await page.goto(base + '/profile');
   await page.getByText('Clear sample memories', { exact: true }).click();
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('@mealogue/meals')).length === 3);

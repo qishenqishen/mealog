@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { TablePlate, TableChair, PLATES, CHAIRS } from '../../src/components/TableObjects';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
   type ImageSourcePropType,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -12,11 +14,18 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getPreferences, trackEvent } from '../../src/product/store';
+import { inferMealType } from '../../src/product/memory';
+import { metadataFromUri } from '../../src/product/exif';
+import { importImageToManagedStore, resolveManagedMediaUri } from '../../src/media/managedMedia';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import {
+  STORAGE_KEYS,
+  getMeals,
   getMealById,
   getMealCompanions,
   getPeopleProfiles,
@@ -31,7 +40,7 @@ import {
   type MoodTag,
   type PersonProfile,
 } from '../../src/types';
-import { colors, shadow } from '../../src/theme';
+import { colors, shadow, fonts } from '../../src/theme';
 import PeoplePickerSheet from '../../src/components/PeoplePickerSheet';
 import { requestCameraPermission, requestLocationPermission, requestPhotosPermission } from '../../src/services/permissions';
 import {
@@ -43,6 +52,9 @@ import {
 import StackedAvatarGroup from '../../src/components/StackedAvatarGroup';
 import { DEMO_MEAL_PHOTOS } from '../../src/demo/mealPhotoAssets';
 import { resolveDemoImageAssetUri } from '../../src/demo/demoImageResolver';
+import { useI18n } from '../../src/i18n';
+import { companionTags } from '../../src/utils/people';
+import { createMealSticker } from '../../src/services/foodStickers';
 import { useAddCopy } from '../../src/i18n/add';
 
 // ── Options ─────────────────────────────────────────────────
@@ -51,6 +63,7 @@ const MEAL_TYPES: { value: MealType; label: string; hint: string }[] = [
   { value: 'breakfast', label: 'Breakfast', hint: 'morning table' },
   { value: 'lunch', label: 'Lunch', hint: 'midday pause' },
   { value: 'dinner', label: 'Dinner', hint: 'evening plate' },
+  { value: 'snack', label: 'Coffee / cooking / a small moment', hint: 'beyond a meal' },
   { value: 'treat', label: 'Treats', hint: 'small sweetness' },
 ];
 
@@ -172,18 +185,21 @@ function TextField({
   onChangeText,
   placeholder,
   multiline = false,
+  editable = true,
 }: {
   label: string;
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
   multiline?: boolean;
+  editable?: boolean;
 }) {
   const t = useAddCopy();
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{t(label)}</Text>
       <TextInput
+        editable={editable}
         style={[styles.input, multiline && styles.textArea]}
         value={value}
         onChangeText={onChangeText}
@@ -200,11 +216,22 @@ function TextField({
 // ── Add Screen ──────────────────────────────────────────────
 
 export default function AddScreen() {
+  const { locale } = useI18n();
+  const zh = locale === 'zh';
+  const [plateStyle, setPlateStyle] = useState(1), [plateHovered, setPlateHovered] = useState(false), [chairStyle, setChairStyle] = useState(0);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const [timingExpanded, setTimingExpanded] = useState(false);
+  const [samplesExpanded, setSamplesExpanded] = useState(false);
+  const [makeSticker, setMakeSticker] = useState(true);
+  const [makingSticker, setMakingSticker] = useState(false);
   const t = useAddCopy();
   const notify = (message: string) => notifyRaw(t(message));
   const router = useRouter();
   const params = useLocalSearchParams();
   const rawEditMealId = params.editMealId;
+  const requestedPersonId = typeof params.personId === 'string' ? params.personId : undefined;
+  const personRequest = typeof params.personRequest === 'string' ? params.personRequest : requestedPersonId;
+  const consumedPersonRequest = useRef<string | undefined>(undefined);
   const editMealId = Array.isArray(rawEditMealId)
     ? rawEditMealId[0]
     : typeof rawEditMealId === 'string'
@@ -216,7 +243,13 @@ export default function AddScreen() {
   const pickingPhoto = useRef(false);
   const now = useMemo(() => new Date(), []);
 
-  const [mealType, setMealType] = useState<MealType>('lunch');
+  const [mealType, setMealType] = useState<MealType>(() => inferMealType(formatTimeKey(now)));
+  const [recentMeals, setRecentMeals] = useState<MealEntry[]>([]);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftStatus, setDraftStatus] = useState('');
+  const startedRecording = useRef(Date.now());
+  const draftReadFailed = useRef(false);
+  const draftWrites = useRef<Promise<unknown>>(Promise.resolve());
   const [date, setDate] = useState(() => formatDateKey(now));
   const [time, setTime] = useState(() => formatTimeKey(now));
   const [title, setTitle] = useState('');
@@ -231,10 +264,13 @@ export default function AddScreen() {
   const [personIds, setPersonIds] = useState<string[]>([]);
   const [peopleProfiles, setPeopleProfiles] = useState<PersonProfile[]>([]);
   const [peoplePickerOpen, setPeoplePickerOpen] = useState(false);
+  const [pendingPerson, setPendingPerson] = useState<PersonProfile>();
+  const [personNotice, setPersonNotice] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [editingMeal, setEditingMeal] = useState<MealEntry | null>(null);
   const [loadingEditMeal, setLoadingEditMeal] = useState(false);
+  const [editLoadAttempt, setEditLoadAttempt] = useState(0);
   const [saveError, setSaveError] = useState<string | undefined>();
 
   const selectedMealType = MEAL_TYPES.find((type) => type.value === mealType) ?? MEAL_TYPES[0];
@@ -249,7 +285,7 @@ export default function AddScreen() {
     draftId.current = generateId();
     setSaveError(undefined);
     const freshNow = new Date();
-    setMealType('lunch');
+    setMealType(inferMealType(formatTimeKey(freshNow)));
     setDate(formatDateKey(freshNow));
     setTime(formatTimeKey(freshNow));
     setTitle('');
@@ -262,8 +298,13 @@ export default function AddScreen() {
     setMoodTags([]);
     setPeopleTags([]);
     setPersonIds([]);
+    setPendingPerson(undefined);
+    setPersonNotice('');
     setNote('');
     setEditingMeal(null);
+    setDetailsExpanded(false);
+    setSamplesExpanded(false);
+    setMakeSticker(true);
   };
 
   useEffect(() => {
@@ -276,23 +317,27 @@ export default function AddScreen() {
     }).catch(() => { if (!cancelled) setSaveError('People could not be loaded. Please try again.'); });
 
     if (!editMealId) {
+      setLoadingEditMeal(false);
       if (editingMeal) resetForm();
       return () => { cancelled = true; locationRequest.current += 1; };
     }
 
     setLoadingEditMeal(true);
+    setEditingMeal(null);
+    setSaveError(undefined);
     getMealById(editMealId)
-      .then((meal) => {
+      .then(async (meal) => {
         if (cancelled) return;
 
         if (!meal) {
-          notify('This meal memory could not be opened for editing.');
-          setEditingMeal(null);
+          setSaveError('This meal memory could not be opened for editing.');
           return;
         }
 
+        const companions = await getMealCompanions(meal.id);
+        if (cancelled) return;
         setEditingMeal(meal);
-        setMealType(meal.mealType === 'snack' ? 'treat' : meal.mealType);
+        setMealType(meal.mealType);
         setDate(meal.date);
         setTime(meal.time);
         setTitle(meal.title);
@@ -303,15 +348,8 @@ export default function AddScreen() {
         setLocationStatus(meal.locationDetails?.source === 'gps' ? 'Current place saved with this memory.' : undefined);
         setMoodTags(meal.moodTags.length > 0 ? meal.moodTags : meal.moodTag ? [meal.moodTag] : []);
         setPeopleTags(meal.peopleTags);
-        setPersonIds(meal.personIds ?? []);
+        setPersonIds(companions.map(companion => companion.personId));
         setNote(meal.note ?? '');
-        getMealCompanions(meal.id).then((companions) => {
-          if (!cancelled) {
-            setPersonIds(companions.map((companion) => companion.personId));
-          }
-        }).catch(() => {
-          if (!cancelled) setSaveError('People could not be loaded. Please try again.');
-        });
       })
       .catch(() => { if (!cancelled) setSaveError('This meal memory could not be opened for editing.'); })
       .finally(() => {
@@ -324,7 +362,63 @@ export default function AddScreen() {
     };
     // The form intentionally resets only when the edit target changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMealId, editLoadAttempt]);
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    getPeopleProfiles().then(profiles => { if (active) setPeopleProfiles(profiles); })
+      .catch(() => { if (active) setSaveError('People could not be loaded. Please try again.'); });
+    return () => { active = false; };
+  }, []));
+
+  useEffect(() => {
+    let active = true;
+    getMeals().then(items => { if (active) setRecentMeals(items.filter(item => item.origin !== 'sample')); }).catch(() => undefined);
+    if (!editMealId) AsyncStorage.getItem(STORAGE_KEYS.mealDraft).then(async raw => {
+      if (!raw) return;
+      const entries = JSON.parse(raw) as MealEntry[]; const draft = entries[0];
+      if (!draft || !active) return;
+      draftId.current = draft.id; setTitle(draft.title); setNote(draft.note || ''); setDate(draft.date); setTime(draft.time); setMealType(draft.mealType);
+      setLocation(draft.location || ''); setMoodTags(draft.moodTags); setPeopleTags(draft.peopleTags); setPersonIds(draft.personIds || []);
+      setPhotoMediaId(draft.photoMediaId); setPhotoUri(await resolveManagedMediaUri(draft.photoMediaId, draft.photoUri));
+      if (active) setDraftStatus(zh ? '上次未完成的草稿已恢复。' : 'Your unfinished draft was restored.');
+    }).catch(() => { draftReadFailed.current = true; if (active) setDraftStatus(zh ? '草稿暂时无法读取，未覆盖旧草稿。' : 'Draft unreadable; the previous draft is kept.'); })
+      .finally(() => { if (active) setDraftReady(true); });
+    return () => { active = false; };
   }, [editMealId]);
+
+  useEffect(() => {
+    if (!draftReady || draftReadFailed.current || editMealId || saving) return;
+    const timer = setTimeout(() => {
+      if (!title && !note && !photoUri && !personIds.length && !location) return;
+      const timestamp = new Date().toISOString();
+      draftWrites.current = draftWrites.current.catch(() => undefined).then(() => AsyncStorage.setItem(STORAGE_KEYS.mealDraft, JSON.stringify([{ id: draftId.current, title, note, date, time, mealType, location, moodTags, peopleTags, personIds, photoMediaId, photoUri: photoMediaId ? undefined : photoUri, createdAt: timestamp, updatedAt: timestamp }])))
+        .catch(() => setDraftStatus(zh ? '草稿保存失败，请保持此页并重试。' : 'Could not save draft; keep this page open.'));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [draftReady, editMealId, saving, title, note, date, time, mealType, location, moodTags, peopleTags, personIds, photoMediaId, photoUri]);
+
+  useEffect(() => {
+    if (!requestedPersonId || !personRequest || consumedPersonRequest.current === personRequest || saving || loadingEditMeal) return;
+    let active = true;
+    getPeopleProfiles().then(profiles => {
+      if (!active) return;
+      consumedPersonRequest.current = personRequest;
+      setPeopleProfiles(profiles);
+      const person = profiles.find(item => item.id === requestedPersonId && !item.deletedAt);
+      if (!person) {
+        setPersonNotice(zh ? '这位同桌人暂时无法找到，可以重新选择。' : 'This person is unavailable. You can choose someone else.');
+      } else if (editMealId) {
+        setPendingPerson(person);
+      } else {
+        setPersonIds(ids => [...new Set([...ids, person.id])]);
+        setPeopleTags(tags => companionTags(tags, [person.id]));
+        setPersonNotice(zh ? `已选中 ${person.nickname ?? person.name}，可以继续记录这一餐。` : `${person.nickname ?? person.name} is selected. Continue your meal memory.`);
+      }
+      router.setParams({ personId: undefined, personRequest: undefined });
+    }).catch(() => { if (active) setSaveError('People could not be loaded. Please try again.'); });
+    return () => { active = false; };
+  }, [requestedPersonId, personRequest, editMealId, saving, loadingEditMeal, zh]);
 
   const editPlace = (value: string) => {
     locationRequest.current += 1;
@@ -372,11 +466,15 @@ export default function AddScreen() {
         notify(permission.message ?? (camera ? 'Camera access is optional. You can choose a photo instead.' : 'Photo access is needed to attach a snapshot to this meal.'));
         return;
       }
-      const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], allowsEditing: false, quality: 1 };
+      const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], allowsEditing: false, quality: 1, exif: true };
       const result = await (camera ? ImagePicker.launchCameraAsync(options) : ImagePicker.launchImageLibraryAsync(options));
       if (!result.canceled && result.assets[0]?.uri) {
-        setPhotoUri(result.assets[0].uri);
-        setPhotoMediaId(undefined);
+        const asset = result.assets[0];
+        const metadata = await metadataFromUri(asset.uri).catch(() => undefined);
+        const media = await importImageToManagedStore({ sourceUri: asset.uri, ownerType: 'meal', ownerId: editingMeal?.id || draftId.current, originalFileName: asset.fileName || undefined });
+        setPhotoUri(await resolveManagedMediaUri(media.id)); setPhotoMediaId(media.id);
+        if (metadata && !isEditing) { setDate(metadata.date); setTime(metadata.time); setMealType(inferMealType(metadata.time)); }
+        setDraftStatus(metadata ? (zh ? '已读取照片拍摄日期，请确认或修改。' : 'Photo date found. Confirm or edit it.') : (zh ? '照片没有可用拍摄日期，请确认日期。' : 'No capture date found. Please confirm the date.'));
         setSaveError(undefined);
       }
     } catch {
@@ -397,7 +495,7 @@ export default function AddScreen() {
   };
 
   const handleSave = async () => {
-    if (saveInFlight.current || loadingEditMeal || (editMealId && !editingMeal)) return;
+    if (saveInFlight.current || loadingEditMeal || (editMealId && editingMeal?.id !== editMealId)) return;
 
     const trimmedTitle = title.trim();
     const trimmedLocation = location.trim();
@@ -414,6 +512,7 @@ export default function AddScreen() {
     }
 
     saveInFlight.current = true;
+    Keyboard.dismiss();
     locationRequest.current += 1;
     setLocating(false);
     setSaving(true);
@@ -444,9 +543,20 @@ export default function AddScreen() {
         updatedAt: new Date().toISOString(),
       }, personIds);
 
+      await trackEvent('record_saved', photoUri && (personIds.length || trimmedLocation || trimmedNote || moodTags.length || peopleTags.includes('just-me')) ? 1 : 0, Date.now() - startedRecording.current);
+      if (!isEditing) { await draftWrites.current; await AsyncStorage.removeItem(STORAGE_KEYS.mealDraft).catch(() => undefined); }
+      let stickerPending = false;
+      if (makeSticker && photoUri && Platform.OS === 'web') {
+        setMakingSticker(true);
+        try {
+          const saved = await getMealById(savedId);
+          if (saved && !saved.stickerUri) await createMealSticker(saved);
+        } catch { stickerPending = true; }
+        finally { setMakingSticker(false); }
+      }
       resetForm();
-
-      router.push(`/meal/${savedId}`);
+      router.setParams({ editMealId: undefined, personId: undefined, personRequest: undefined });
+      router.push(`/meal/${savedId}${stickerPending ? '?stickerNotice=pending' : ''}`);
     } catch {
       setSaveError('Your memory could not be saved. Check that the photo is readable and browser storage is available, then try again. Your form is kept.');
     } finally {
@@ -462,6 +572,7 @@ export default function AddScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
+          pointerEvents={saving || loadingEditMeal ? 'none' : 'auto'}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -471,19 +582,34 @@ export default function AddScreen() {
               {t(isEditing ? 'Editing meal memory' : 'A new meal memory')}
             </Text>
             <Text style={styles.headerTitle}>
-              {t(isEditing ? 'Refine the memory' : 'Set the table')}
+              {zh ? (isEditing ? '再添一笔。' : '留住这一餐。') : (isEditing ? 'One more detail.' : 'Keep this meal.')}
             </Text>
             <Text style={styles.headerSubtitle}>
-              {t(isEditing
-                ? 'Adjust the details that still belong to this meal.'
-                : 'Keep the food, the hour, and who was near enough to remember.')}
+              {zh ? '以后想起今天，也许就从这一餐开始。' : 'One day, this meal might bring today back.'}
             </Text>
           </View>
+
+          {!isEditing && <View style={styles.section}>
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: timingExpanded }} onPress={() => setTimingExpanded(!timingExpanded)} style={styles.locationButton}><Text style={styles.locationButtonText}>{date} · {time}　{timingExpanded ? '−' : '+'}</Text></Pressable>
+            {draftStatus ? <Text accessibilityLiveRegion="polite" style={styles.headerSubtitle}>{draftStatus}</Text> : null}
+            {timingExpanded && <>
+            <Text style={styles.sectionTitle}>{zh ? '确认这个时刻' : 'Confirm this moment'}</Text>
+            <Text style={styles.headerSubtitle}>{zh ? '时间建议可以修改，同行的人与心情由你确认。咖啡和做饭过程也可以留下。' : 'Edit the time suggestion. Only you decide companions and feelings; coffee or cooking belongs here too.'}</Text>
+            <TextField label="Date" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD"/>
+            <TextField label="Time" value={time} onChangeText={value => { setTime(value); setMealType(inferMealType(value)); }} placeholder="HH:mm"/>
+
+            <Text style={styles.fieldLabel}>{zh ? '最近同桌的人（点击确认，不自动添加）' : 'Recent companions — tap to confirm'}</Text>
+            <View style={styles.chipRow}>{[...new Set(recentMeals.flatMap(meal => meal.personIds || []))].slice(0, 3).map(id => { const person = peopleProfiles.find(person => person.id === id); return person ? <SoftChip key={id} label={person.nickname || person.name} selected={personIds.includes(id)} onPress={() => { const ids = toggleValue(personIds, id); setPersonIds(ids); setPeopleTags(tags => companionTags(tags, ids)); }}/> : null; })}</View>
+            <View style={styles.chipRow}>{[...new Set(recentMeals.map(meal => meal.location).filter((place): place is string => Boolean(place)))].slice(0, 3).map(place => <SoftChip key={place} label={place} selected={location === place} onPress={() => editPlace(place)}/>)}</View>
+            <View style={styles.chipRow}>{[...new Set(recentMeals.map(meal => meal.title))].slice(0, 3).map(name => <SoftChip key={name} label={name} selected={title === name} onPress={() => setTitle(name)}/>)}</View>
+          </>}</View>}
 
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t(photoUri ? 'Change meal photo' : 'Upload a meal photo')}
             onPress={handlePickPhoto}
+            onHoverIn={() => setPlateHovered(true)}
+            onHoverOut={() => setPlateHovered(false)}
             style={({ pressed }) => [
               styles.photoFrame,
               pressed && styles.photoFramePressed,
@@ -493,12 +619,14 @@ export default function AddScreen() {
               <Image source={{ uri: photoUri }} style={styles.photoPreview} />
             ) : (
               <View style={styles.photoPlaceholder}>
-                <Text style={styles.photoPlus}>+</Text>
-                <Text style={styles.photoTitle}>{t('A snapshot of the table')}</Text>
-                <Text style={styles.photoHint}>{t('Some stories live best in pictures.')}</Text>
+                <TablePlate variant={plateHovered ? (plateStyle + 1) % PLATES.length : plateStyle}/>
+                <Text style={styles.photoTitle}>{zh ? '先放一张照片' : 'Start with a photograph'}</Text>
+                <Text style={styles.photoHint}>{zh ? '轻触餐盘，带回这一刻' : 'Tap the plate to bring this moment back'}</Text>
               </View>
             )}
           </Pressable>
+
+          {!photoUri && <View style={styles.objectChoices}>{PLATES.map((plate, index) => <Pressable key={plate.en} accessibilityRole="button" accessibilityLabel={zh ? `换成${plate.zh}餐盘` : `Choose ${plate.en} plate`} accessibilityState={{ selected: plateStyle === index }} onPress={() => { setPlateStyle(index); setPlateHovered(false); }} style={styles.objectChoice}><View style={[styles.plateSwatch, { backgroundColor: plate.rim }, plateStyle === index && styles.objectSelected]}/><Text style={styles.objectLabel}>{zh ? plate.zh : plate.en}</Text></Pressable>)}</View>}
 
           <View style={styles.locationToolsRow}>
             <Pressable accessibilityRole="button" onPress={() => handlePhoto(true)} style={styles.locationButton}>
@@ -509,7 +637,10 @@ export default function AddScreen() {
             </Pressable>
           </View>
 
-            <View style={styles.demoPhotoPicker}>
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: samplesExpanded }} onPress={() => setSamplesExpanded(!samplesExpanded)} style={styles.sampleToggle}>
+              <Text style={styles.locationButtonText}>{zh ? (samplesExpanded ? '收起示例照片 −' : '试用示例照片 +') : (samplesExpanded ? 'Hide sample photos −' : 'Try a sample photo +')}</Text>
+            </Pressable>
+            {samplesExpanded && <View style={styles.demoPhotoPicker}>
               <Text style={styles.demoPhotoKicker}>{t('Or choose a sample photo')}</Text>
               <ScrollView
                 horizontal
@@ -532,8 +663,57 @@ export default function AddScreen() {
                   </Pressable>
                 ))}
               </ScrollView>
-            </View>
+            </View>}
 
+          <TextField editable={!saving && !loadingEditMeal} label="Meal name" value={title} onChangeText={setTitle} placeholder="Wheat bread, sushi, soup..." />
+
+          <View style={styles.realPeopleBox}>
+            <Text style={styles.peopleIntroTitle}>{zh ? '这一餐，和谁一起？' : 'Who is at this table?'}</Text>
+            <Pressable accessibilityRole="button" onPress={() => setPeoplePickerOpen(true)} style={styles.companionChoice}>
+              {selectedPeople.length > 0 ? <StackedAvatarGroup people={selectedPeople} size={28} /> :
+                <TableChair variant={chairStyle} size={38}/>}
+              <Text style={[styles.peoplePickerButtonText, { flex: 1 }]}>
+                {selectedPeople.length ? selectedPeople.map(person => person.nickname ?? person.name).join('、') :
+                  zh ? '选择 / 添加同桌人 ＋' : 'Choose / add someone ＋'}
+              </Text>
+              {selectedPeople.length > 0 && <Text style={styles.peoplePickerButtonText}>{zh ? '编辑' : 'Edit'}</Text>}
+            </Pressable>
+            <View style={styles.chairChoices}>{CHAIRS.map((chair, index) => <Pressable key={chair.key} accessibilityRole="button" accessibilityLabel={zh ? `选择${chair.zh}` : `Choose ${chair.en}`} accessibilityState={{ selected: chairStyle === index }} onPress={() => setChairStyle(index)} style={[styles.chairChoice, chairStyle === index && styles.chairSelected]}><TableChair variant={index} size={30}/><Text style={styles.objectLabel}>{zh ? chair.zh : chair.en}</Text></Pressable>)}</View>
+            <View style={[styles.companionOptions, { justifyContent: 'flex-end' }]}>
+              <Pressable accessibilityRole="checkbox" accessibilityLabel={zh ? '独自用餐' : 'I ate alone'}
+                accessibilityState={{ checked: peopleTags.includes('just-me') }} style={styles.soloChoice}
+                onPress={() => { setPersonIds([]); setPeopleTags(current => companionTags(current, [], !current.includes('just-me'))); setPersonNotice(''); }}>
+                <Text style={styles.peoplePickerButtonText}>{peopleTags.includes('just-me') ? '✓ ' : ''}{zh ? '独自用餐' : 'I ate alone'}</Text>
+              </Pressable>
+            </View>
+            {personNotice ? <Text accessibilityLiveRegion="polite" style={styles.optionalHint}>{personNotice}</Text> : null}
+            {pendingPerson && <View>
+              <Text style={styles.optionalHint}>{zh ? '你正在编辑另一餐。是否把这位同桌人加入当前餐食？' : 'You are editing another meal. Add this person to that meal?'}</Text>
+              <View style={styles.companionOptions}>
+                <Pressable accessibilityRole="button" style={styles.soloChoice} onPress={() => {
+                  setPersonIds(ids => [...new Set([...ids, pendingPerson.id])]);
+                  setPeopleTags(tags => companionTags(tags, [pendingPerson.id]));
+                  setPendingPerson(undefined);
+                }}><Text style={styles.peoplePickerButtonText}>{zh ? `加入 ${pendingPerson.nickname ?? pendingPerson.name}` : `Add ${pendingPerson.nickname ?? pendingPerson.name}`}</Text></Pressable>
+                <Pressable accessibilityRole="button" style={styles.soloChoice} onPress={() => setPendingPerson(undefined)}>
+                  <Text style={styles.peoplePickerButtonText}>{zh ? '暂不添加' : 'Not now'}</Text>
+                </Pressable>
+              </View>
+            </View>}
+          </View>
+          <TextInput editable={!saving && !loadingEditMeal} accessibilityLabel={t('Note')} style={[styles.input, styles.noteInput]} value={note} onChangeText={setNote}
+            placeholder={zh ? '今天聊起的话题，或一个想留住的小细节。' : 'A conversation, or a small detail you want to keep.'}
+            placeholderTextColor={colors.muted} multiline maxLength={420} textAlignVertical="top" />
+          {photoUri && Platform.OS === 'web' && <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: makeSticker }}
+            onPress={() => setMakeSticker(!makeSticker)} style={styles.stickerOption}>
+            <Text style={styles.locationButtonText}>{makeSticker ? '☑' : '□'} {zh ? '保存后制作餐食贴纸' : 'Make a food sticker after saving'}</Text>
+            <Text style={styles.optionalHint}>{zh ? '自动放入日历与饮食图册。照片仅在设备上处理。' : 'For your calendar and food album. Photos stay on this device.'}</Text>
+          </Pressable>}
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: detailsExpanded }} onPress={() => setDetailsExpanded(!detailsExpanded)} style={styles.detailsToggle}>
+            <Text style={styles.detailTitle}>{zh ? '再添几笔' : 'A few more details'} {detailsExpanded ? '−' : '+'}</Text>
+            <Text style={styles.optionalHint}>{t(selectedMealType.label)} · {date} · {time}</Text>
+          </Pressable>
+          {detailsExpanded && <>
           <Section eyebrow="Catering" title="What kind of meal was it?">
             <View style={styles.mealTypeGrid}>
               {MEAL_TYPES.map((type) => (
@@ -562,16 +742,11 @@ export default function AddScreen() {
           </Section>
 
           <View style={styles.paper}>
-            <TextField
-              label="Meal name"
-              value={title}
-              onChangeText={setTitle}
-              placeholder="Wheat bread, sushi, soup..."
-            />
 
-            <View style={styles.dateTimeRow}>
+            {isEditing && <View style={styles.dateTimeRow}>
               <View style={styles.dateTimeField}>
                 <TextField
+                  editable={!saving && !loadingEditMeal}
                   label="Date"
                   value={date}
                   onChangeText={setDate}
@@ -580,17 +755,19 @@ export default function AddScreen() {
               </View>
               <View style={styles.dateTimeField}>
                 <TextField
+                  editable={!saving && !loadingEditMeal}
                   label="Time"
                   value={time}
                   onChangeText={setTime}
                   placeholder="HH:mm"
                 />
               </View>
-            </View>
+            </View>}
 
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>{t('Location')}</Text>
               <TextInput
+                editable={!saving && !loadingEditMeal}
                 accessibilityLabel={t('Location')}
                 style={styles.input}
                 value={location}
@@ -631,74 +808,25 @@ export default function AddScreen() {
             </View>
           </Section>
 
-          <Section eyebrow="Seats" title="Who was around the table?">
-            <View style={styles.realPeopleBox}>
-              <View style={styles.realPeopleHeader}>
-                <View style={styles.realPeopleTextWrap}>
-                  <Text style={styles.peopleIntroTitle}>{t('Meal companions')}</Text>
-                  <Text style={styles.peopleIntroText}>
-                    {t('Save real people you can remember again at another table.')}
-                  </Text>
-                </View>
-                {selectedPeople.length > 0 ? (
-                  <StackedAvatarGroup people={selectedPeople} size={34} />
-                ) : null}
-              </View>
-              {selectedPeople.length > 0 ? (
-                <Text style={styles.selectedPeopleLine}>
-                  {selectedPeople.map((person) => person.nickname ?? person.name).join(', ')}
-                </Text>
-              ) : (
-                <Text style={styles.selectedPeopleLine}>
-                  {t('No one has taken a seat yet.')}
-                </Text>
-              )}
-              <Pressable
-                accessibilityRole="button"
-                style={styles.peoplePickerButton}
-                onPress={() => setPeoplePickerOpen(true)}
-              >
-                <Text style={styles.peoplePickerButtonText}>
-                  {t(selectedPeople.length > 0 ? 'Edit people at this meal' : 'Add people at this meal')}
-                </Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.peopleIntroBox}>
-              <Text style={styles.peopleIntroTitle}>{t('Companionship, not contacts.')}</Text>
-              <Text style={styles.peopleIntroText}>
-                {t('Choose the kind of table this meal belonged to.')}
-              </Text>
-            </View>
+          <Section eyebrow="Seats" title="Choose the kind of table this meal belonged to.">
             <View style={styles.chipRow}>
-              {DEFAULT_COMPANIONSHIP_TAGS.map((tag) => (
-                <SoftChip
-                  key={tag.id}
-                  label={tag.label}
-                  selected={peopleTags.includes(tag.id)}
-                  onPress={() => setPeopleTags((current) => toggleValue(current, tag.id))}
-                />
+              {DEFAULT_COMPANIONSHIP_TAGS.filter(tag => tag.id !== 'just-me').map(tag => (
+                <SoftChip key={tag.id} label={tag.label} selected={peopleTags.includes(tag.id)}
+                  onPress={() => setPeopleTags(current => toggleValue(current.filter(value => value !== 'just-me'), tag.id))} />
               ))}
             </View>
           </Section>
 
-          <Section eyebrow="Note" title="What should stay with it?">
-            <TextInput
-              accessibilityLabel={t('Note')}
-              style={[styles.input, styles.noteInput]}
-              value={note}
-              onChangeText={setNote}
-              placeholder={t('A short memory, a conversation, the weather, the feeling of the room...')}
-              placeholderTextColor="rgba(141, 123, 102, 0.52)"
-              multiline
-              maxLength={420}
-              textAlignVertical="top"
-            />
-          </Section>
+          </>}
         </ScrollView>
 
         <View style={styles.saveBar}>
           {saveError ? <Text accessibilityLiveRegion="polite" style={styles.saveError}>{t(saveError)}</Text> : null}
+          {editMealId && !loadingEditMeal && editingMeal?.id !== editMealId ? (
+            <Pressable accessibilityRole="button" style={styles.sampleToggle} onPress={() => setEditLoadAttempt(attempt => attempt + 1)}>
+              <Text style={styles.locationButtonText}>{zh ? '重新读取这餐' : 'Reload this meal'}</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             style={({ pressed }) => [
@@ -707,10 +835,10 @@ export default function AddScreen() {
               saving && styles.saveButtonDisabled,
             ]}
             onPress={handleSave}
-            disabled={saving || loadingEditMeal || Boolean(editMealId && !editingMeal)}
+            disabled={saving || loadingEditMeal || Boolean(editMealId && editingMeal?.id !== editMealId)}
           >
             <Text style={styles.saveButtonText}>
-              {t(loadingEditMeal
+              {makingSticker ? (zh ? '餐食已保存，正在制作贴纸…' : 'Meal saved. Making your sticker…') : t(loadingEditMeal
                 ? 'Opening memory...'
                 : saving
                   ? 'Saving memory...'
@@ -724,9 +852,13 @@ export default function AddScreen() {
         <PeoplePickerSheet
           visible={peoplePickerOpen}
           selectedPersonIds={personIds}
+          ateAlone={peopleTags.includes('just-me')}
+          scope={editingMeal?.origin === 'sample' ? 'sample' : 'personal'}
           onClose={() => setPeoplePickerOpen(false)}
-          onSave={async (ids) => {
+          onSave={async (ids, alone) => {
             setPersonIds(ids);
+            setPeopleTags(tags => companionTags(tags, ids, alone));
+            setPersonNotice('');
             const profiles = await getPeopleProfiles();
             setPeopleProfiles(profiles);
           }}
@@ -743,6 +875,8 @@ export default function AddScreen() {
 // ── Styles ──────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  objectChoices: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 4, marginBottom: 6 }, objectChoice: { alignItems: 'center', justifyContent: 'center', minHeight: 44, gap: 5, padding: 4 }, plateSwatch: { width: 19, height: 19, borderRadius: 10, borderWidth: 1, borderColor: 'transparent' }, objectSelected: { borderWidth: 2, borderColor: colors.primary }, objectLabel: { fontFamily: fonts.body, fontSize: 10, color: colors.mutedText }, chairChoices: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 9 }, chairChoice: { minHeight: 48, alignItems: 'center', padding: 5, borderRadius: 8, borderWidth: 1, borderColor: 'transparent' }, chairSelected: { borderColor: colors.border, backgroundColor: colors.accentSoft },
+
   safe: {
     flex: 1,
     backgroundColor: colors.background,
@@ -758,18 +892,18 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 22,
   },
-  headerKicker: {
+  headerKicker: { fontFamily: fonts.body,
     fontSize: 12,
     color: colors.muted,
     marginBottom: 6,
   },
-  headerTitle: {
-    fontSize: 34,
-    lineHeight: 40,
-    fontStyle: 'italic',
+  headerTitle: { fontFamily: fonts.editorial,
+    fontSize: 26,
+    lineHeight: 32,
+    fontStyle: 'normal',
     color: colors.primary,
   },
-  headerSubtitle: {
+  headerSubtitle: { fontFamily: fonts.body,
     marginTop: 8,
     maxWidth: 310,
     fontSize: 14,
@@ -777,36 +911,57 @@ const styles = StyleSheet.create({
     color: colors.mutedText,
   },
   photoFrame: {
-    borderRadius: 24,
+    borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: 'rgba(255, 253, 248, 0.7)',
-    borderWidth: 8,
-    borderColor: 'rgba(234, 223, 204, 0.52)',
-    marginBottom: 28,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    marginBottom: 8,
   },
   photoFramePressed: {
     opacity: 0.82,
   },
   photoPreview: {
     width: '100%',
-    aspectRatio: 1.24,
+    aspectRatio: 1.8,
   },
   photoPlaceholder: {
-    aspectRatio: 1.24,
+    minHeight: 204,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.62)',
   },
   photoPlus: {
-    fontSize: 58,
-    lineHeight: 64,
+    fontSize: 30,
+    lineHeight: 34,
     color: '#B49158',
     fontWeight: '200',
+  },
+  photoPlate: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 1.5,
+    borderColor: '#D5C2A5',
+    backgroundColor: '#F5EDDE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoPlateWell: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 1,
+    borderColor: '#E1D2BB',
+    backgroundColor: '#FFFCF6',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   photoTitle: {
     marginTop: 8,
     fontSize: 17,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
     color: colors.primary,
   },
   photoHint: {
@@ -815,14 +970,14 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   demoPhotoPicker: {
-    marginTop: -14,
+    marginTop: 6,
     marginBottom: 26,
   },
   demoPhotoKicker: {
     marginBottom: 9,
     fontSize: 12,
     color: colors.mutedText,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   demoPhotoRow: {
     gap: 10,
@@ -856,10 +1011,10 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginBottom: 6,
   },
-  sectionTitle: {
-    fontSize: 22,
-    lineHeight: 29,
-    fontStyle: 'italic',
+  sectionTitle: { fontFamily: fonts.editorial,
+    fontSize: 17,
+    lineHeight: 23,
+    fontStyle: 'normal',
     color: colors.primary,
     marginBottom: 14,
   },
@@ -870,7 +1025,7 @@ const styles = StyleSheet.create({
   },
   mealTypeCard: {
     width: '47.8%',
-    borderRadius: 18,
+    borderRadius: 2,
     paddingHorizontal: 16,
     paddingVertical: 15,
     backgroundColor: 'rgba(255, 253, 248, 0.46)',
@@ -882,8 +1037,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(180, 145, 88, 0.42)',
   },
   mealTypeLabel: {
-    fontSize: 18,
-    fontStyle: 'italic',
+    fontSize: 16,
+    fontStyle: 'normal',
     color: colors.primary,
   },
   mealTypeLabelActive: {
@@ -895,7 +1050,7 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   paper: {
-    borderRadius: 22,
+    borderRadius: 2,
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 4,
@@ -908,19 +1063,19 @@ const styles = StyleSheet.create({
   field: {
     marginBottom: 17,
   },
-  fieldLabel: {
+  fieldLabel: { fontFamily: fonts.body,
     fontSize: 12,
     color: colors.mutedText,
     marginBottom: 7,
   },
-  input: {
+  input: { fontFamily: fonts.body,
     minHeight: 44,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.48)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(185, 165, 138, 0.22)',
+    backgroundColor: colors.surface,
+    borderWidth: 1.2,
+    borderColor: colors.primary,
     color: colors.primary,
     fontSize: 15,
   },
@@ -952,7 +1107,7 @@ const styles = StyleSheet.create({
   locationButtonText: {
     fontSize: 12,
     color: colors.secondary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   locationStatus: {
     flexShrink: 1,
@@ -969,20 +1124,20 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   chip: {
-    borderRadius: 15,
+    borderRadius: 22,
     paddingHorizontal: 13,
     paddingVertical: 9,
-    backgroundColor: 'rgba(248, 232, 212, 0.34)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(185, 165, 138, 0.18)',
+    backgroundColor: colors.background,
+    borderWidth: 1.2,
+    borderColor: colors.primary,
   },
   chipCompact: {
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   chipSelected: {
-    backgroundColor: 'rgba(180, 145, 88, 0.2)',
-    borderColor: 'rgba(180, 145, 88, 0.42)',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   chipPressed: {
     opacity: 0.72,
@@ -990,60 +1145,36 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 13,
     color: colors.mutedText,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   chipTextSelected: {
-    color: colors.secondary,
+    color: colors.background,
   },
   realPeopleBox: {
-    borderRadius: 18,
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 15,
     marginBottom: 14,
-    backgroundColor: 'rgba(255, 253, 248, 0.5)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(185, 165, 138, 0.22)',
+    backgroundColor: colors.surface,
+    borderWidth: 1.2,
+    borderColor: colors.primary,
   },
-  realPeopleHeader: {
+  companionChoice: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 10,
+    gap: 10,
   },
-  realPeopleTextWrap: {
-    flex: 1,
-  },
-  selectedPeopleLine: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.mutedText,
-    marginBottom: 12,
-  },
-  peoplePickerButton: {
-    alignSelf: 'flex-start',
-    borderRadius: 17,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    backgroundColor: 'rgba(180, 145, 88, 0.16)',
-  },
+  companionOptions: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  soloChoice: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
   peoplePickerButtonText: {
     fontSize: 13,
     color: colors.secondary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
-  peopleIntroBox: {
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 14,
-    backgroundColor: 'rgba(255, 253, 248, 0.42)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(185, 165, 138, 0.2)',
-  },
-  peopleIntroTitle: {
+  peopleIntroTitle: { fontFamily: fonts.editorial,
     fontSize: 15,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
     color: colors.primary,
     marginBottom: 5,
   },
@@ -1053,25 +1184,31 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   noteInput: {
-    minHeight: 122,
+    minHeight: 78,
     lineHeight: 22,
   },
+  optionalHint: { color: colors.mutedText, fontSize: 12, lineHeight: 18, marginBottom: 8 },
+  sampleToggle: { minHeight: 40, justifyContent: 'center', marginBottom: 8 },
+  detailsToggle: { paddingVertical: 18, marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  detailTitle: { fontFamily: fonts.editorial, fontSize: 15, color: colors.primary, marginBottom: 4 },
+  stickerOption: { gap: 6, paddingTop: 16 },
   saveError: { color: '#9a4545', fontSize: 13, lineHeight: 18, marginBottom: 8 },
   saveBar: {
     paddingHorizontal: 22,
     paddingTop: 12,
     paddingBottom: 16,
-    backgroundColor: 'rgba(255, 248, 240, 0.92)',
+    backgroundColor: colors.background,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(234, 223, 204, 0.54)',
+    borderTopColor: colors.border,
   },
   saveButton: {
-    borderRadius: 22,
+    borderRadius: 12,
     minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(92, 64, 51, 0.9)',
+    backgroundColor: colors.accent,
     ...shadow.soft,
+    borderWidth: 1.5, borderColor: colors.primary,
   },
   saveButtonPressed: {
     opacity: 0.84,
@@ -1081,7 +1218,8 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 16,
-    color: colors.background,
-    fontStyle: 'italic',
+    color: colors.primary,
+    fontStyle: 'normal',
+    fontWeight: '600',
   },
 });

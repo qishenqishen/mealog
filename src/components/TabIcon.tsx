@@ -84,9 +84,8 @@ export function TabIcon({
   if (name === 'insights') {
     return (
       <View style={styles.iconBox}>
-        <View style={[styles.sparkLineOne, { backgroundColor: tint }]} />
-        <View style={[styles.sparkLineTwo, { backgroundColor: tint }]} />
-        <View style={[styles.sparkDot, { backgroundColor: tint }]} />
+        <View style={[styles.insightLens, { borderColor: tint }]} />
+        <View style={[styles.insightHandle, { backgroundColor: tint }]} />
       </View>
     );
   }
@@ -248,26 +247,23 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 2,
   },
-  sparkLineOne: {
-    width: 1.2,
-    height: 22,
-    borderRadius: 2,
-  },
-  sparkLineTwo: {
+  insightLens: {
     position: 'absolute',
-    width: 18,
+    left: 3,
+    top: 1,
+    width: 17,
+    height: 17,
+    borderRadius: 9,
+    borderWidth: 1.2,
+  },
+  insightHandle: {
+    position: 'absolute',
+    left: 16.5,
+    top: 18,
+    width: 9,
     height: 1.2,
     borderRadius: 2,
-    transform: [{ rotate: '-24deg' }],
-  },
-  sparkDot: {
-    position: 'absolute',
-    right: 4,
-    top: 2,
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    opacity: 0.68,
+    transform: [{ rotate: '45deg' }],
   },
   utensilSet: {
     width: 24,

@@ -207,10 +207,6 @@ export default function AchievementStamp({
             height: size,
             borderRadius: size / 2,
           },
-          visualState === 'unlocked' && styles.paperUnlocked,
-          visualState === 'newly_unlocked' && styles.paperNew,
-          showLocked && styles.paperLocked,
-          visualState === 'in_progress' && styles.paperProgress,
         ]}
       >
         {loadArt ? <Image
@@ -219,14 +215,13 @@ export default function AchievementStamp({
           style={[
             styles.art,
             {
-              width: size * 0.88,
-              height: size * 0.88,
+              width: size,
+              height: size,
             },
             showLocked && styles.artLocked,
             visualState === 'in_progress' && styles.artProgress,
           ]}
         /> : null}
-        {showLocked ? <View pointerEvents="none" style={styles.paperVeil} /> : null}
         {showLocked ? <LockMark size={size} /> : null}
       </View>
     </View>
@@ -240,67 +235,44 @@ const styles = StyleSheet.create({
   },
   halo: {
     position: 'absolute',
-    backgroundColor: 'rgba(248, 232, 212, 0.82)',
+    backgroundColor: 'rgba(238, 229, 226, 0.45)',
   },
   tickWrap: {
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
+    opacity: 0.55,
   },
   progressTick: {
     position: 'absolute',
     width: 2,
     height: 7,
     borderRadius: 2,
-    backgroundColor: 'rgba(214, 196, 169, 0.62)',
+    backgroundColor: 'rgba(203, 211, 199, 0.46)',
   },
   progressTickActive: {
-    backgroundColor: 'rgba(180, 145, 88, 0.9)',
+    backgroundColor: 'rgba(143, 165, 145, 0.8)',
   },
   paper: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(248, 232, 212, 0.45)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(185, 165, 138, 0.34)',
+    backgroundColor: 'transparent',
     overflow: 'visible',
-  },
-  paperUnlocked: {
-    backgroundColor: 'rgba(255, 253, 248, 0.64)',
-    borderColor: 'rgba(180, 145, 88, 0.44)',
-  },
-  paperNew: {
-    backgroundColor: 'rgba(255, 253, 248, 0.82)',
-    borderColor: 'rgba(180, 145, 88, 0.7)',
-  },
-  paperLocked: {
-    backgroundColor: 'rgba(239, 230, 218, 0.7)',
-    borderStyle: 'dashed',
-    borderColor: 'rgba(116, 81, 61, 0.34)',
-  },
-  paperProgress: {
-    backgroundColor: 'rgba(255, 248, 238, 0.7)',
-    borderColor: 'rgba(180, 145, 88, 0.48)',
   },
   art: {
     opacity: 1,
   },
   artLocked: {
-    opacity: 0.62,
+    opacity: 0.32,
   },
   artProgress: {
-    opacity: 0.82,
-  },
-  paperVeil: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 999,
-    backgroundColor: 'rgba(247, 239, 228, 0.34)',
+    opacity: 0.42,
   },
   lockMark: {
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(92, 64, 51, 0.86)',
+    backgroundColor: '#93A18F',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255, 253, 248, 0.68)',
   },

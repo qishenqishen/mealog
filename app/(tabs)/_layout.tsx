@@ -12,18 +12,17 @@ export default function TabLayout() {
         headerShown: false,
         tabBarStyle: {
           backgroundColor: colors.background,
-          borderTopColor: 'rgba(240, 230, 214, 0.6)',
+          borderTopColor: colors.border,
           borderTopWidth: StyleSheet.hairlineWidth,
-          height: Platform.select({ ios: 84, android: 78, web: 82, default: 80 }),
-          paddingBottom: Platform.select({ ios: 22, android: 12, web: 12, default: 14 }),
+          height: Platform.select({ ios: 84, android: 78, web: 68, default: 80 }),
+          paddingBottom: Platform.select({ ios: 22, android: 12, web: 8, default: 14 }),
           paddingTop: 8,
         },
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.muted,
+        tabBarInactiveTintColor: colors.mutedText,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '500',
-          fontStyle: 'italic',
           letterSpacing: 0,
         },
       }}

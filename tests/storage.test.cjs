@@ -105,7 +105,7 @@ function runtime(platform = 'web') {
     },
   };
   const context = vm.createContext({
-    console, Blob, Error, URL: {
+    console, Blob, Error, Uint8Array, ArrayBuffer, TextEncoder, TextDecoder, setTimeout: (callback) => 0, URL: {
       createObjectURL(blob) { const uri = `blob:display-${++sequence}`; urls.set(uri, blob); return uri; },
       revokeObjectURL(uri) { revoked.push(uri); urls.delete(uri); },
     },
@@ -135,6 +135,7 @@ function runtime(platform = 'web') {
     },
   });
   const mocks = {
+    fflate: require('fflate'),
     '@react-native-async-storage/async-storage': storage,
     'expo-file-system/legacy': fileSystem,
     'react-native': {
@@ -181,7 +182,7 @@ function runtime(platform = 'web') {
   const api = load('src/storage/index.ts');
   const media = load('src/media/managedMedia.ts');
   return {
-    api, media, values, blobs, files, sources, urls, revoked, writes, thumbnails, fail, context,
+    load, api, media, values, blobs, files, sources, urls, revoked, writes, thumbnails, fail, context,
     read: (key) => JSON.parse(values.get(key) ?? '[]'),
     store: (key, value) => values.set(key, JSON.stringify(value)),
   };
@@ -344,6 +345,83 @@ test('getMeals shares cached display URLs and deletion revokes them', async () =
   assert.equal(r.urls.size, 0);
   assert.equal(r.revoked.length, 2);
   assert.equal(r.blobs.size, 0);
+});
+
+test('meal stickers preserve originals and text edits, reject stale sources, and clean only unreferenced cutouts', async () => {
+  const r = runtime();
+  r.sources.set('blob:picker', imageBlob('original'));
+  r.sources.set('blob:cutout', imageBlob('cutout', 500, 500));
+  r.sources.set('blob:new', imageBlob('replacement'));
+  await r.api.saveMeal(meal('meal', { photoUri: 'blob:picker' }));
+  const source = await r.api.getMealById('meal');
+  await r.api.saveMealSticker(source, 'blob:cutout');
+  let saved = r.read(r.api.KEYS.meals)[0];
+  const firstSticker = saved.stickerMediaId;
+  assert.notEqual(firstSticker, source.photoMediaId);
+  assert.match(saved.stickerUri, /^indexeddb:/);
+  assert.equal(r.blobs.get(firstSticker).type, 'image/png');
+  assert.equal(JSON.parse(await r.blobs.get(source.photoMediaId).text()).label, 'original');
+  const hydrated = (await r.api.getMeals())[0];
+  assert.match(hydrated.stickerUri, /^blob:/);
+  assert.equal(JSON.parse(await r.urls.get(hydrated.stickerUri).text()).label, 'cutout');
+
+  // The add/edit form can predate sticker generation and omit both sticker fields.
+  for (const save of [r.api.saveMeal, (entry) => r.api.saveMealMemory(entry, [])]) {
+    const { stickerMediaId, stickerUri, ...textEdit } = source;
+    await save({ ...textEdit, title: 'New title', note: 'My original words' });
+    saved = r.read(r.api.KEYS.meals)[0];
+    assert.equal(saved.stickerMediaId, firstSticker);
+    assert.equal(saved.photoMediaId, source.photoMediaId);
+  }
+  await r.api.saveMealSticker(source, 'blob:cutout');
+  saved = r.read(r.api.KEYS.meals)[0];
+  assert.equal(saved.title, 'New title', 'Finishing a cutout must not overwrite later text edits');
+  assert.equal(saved.note, 'My original words');
+  assert.equal(r.blobs.has(firstSticker), false, 'A regenerated cutout releases its unused predecessor');
+  const beforeFailedSave = r.values.get(r.api.KEYS.meals);
+  const beforeFailedMedia = [...r.blobs.keys()];
+  r.fail('set', r.api.KEYS.meals, { after: true });
+  await assert.rejects(r.api.saveMealSticker(source, 'blob:cutout'), /previous data was restored/);
+  assert.equal(r.values.get(r.api.KEYS.meals), beforeFailedSave);
+  assert.deepEqual([...r.blobs.keys()], beforeFailedMedia, 'A failed cutout save keeps originals and removes only its incomplete copy');
+
+  for (const replace of [
+    () => r.api.saveMeal(meal('meal', { photoUri: 'blob:new' })),
+    () => r.api.saveMealMemory(meal('meal', { photoUri: 'blob:picker' }), []),
+    () => r.api.saveSharedMealPhoto(photo('new-cover', 'meal', { imageUrl: 'blob:new', isCover: true })),
+  ]) {
+    const staleSource = await r.api.getMealById('meal');
+    const oldSticker = staleSource.stickerMediaId;
+    await replace();
+    saved = r.read(r.api.KEYS.meals)[0];
+    assert.equal(saved.stickerMediaId, undefined, 'Replacing the source, including a shared cover, invalidates the cutout');
+    assert.equal(saved.stickerUri, undefined);
+    assert.equal(r.blobs.has(oldSticker), false, 'Replacing a source releases its unused cutout');
+    const unchanged = r.values.get(r.api.KEYS.meals);
+    await assert.rejects(r.api.saveMealSticker(staleSource, 'blob:cutout'), /source photo changed/i);
+    assert.equal(r.values.get(r.api.KEYS.meals), unchanged);
+    await r.api.saveMealSticker(await r.api.getMealById('meal'), 'blob:cutout');
+  }
+
+  const finalSource = await r.api.getMealById('meal');
+  await r.api.saveMeal(meal('shared-reference', { photoMediaId: finalSource.stickerMediaId }));
+  await r.api.deleteMeal('meal');
+  assert.ok(r.blobs.has(finalSource.stickerMediaId), 'Deleting a meal keeps a cutout referenced by another record');
+  const beforeStaleSave = r.values.get(r.api.KEYS.meals);
+  await assert.rejects(r.api.saveMealSticker(finalSource, 'blob:cutout'), /source photo changed/i);
+  assert.equal(r.values.get(r.api.KEYS.meals), beforeStaleSave, 'Late generation cannot recreate a deleted meal');
+  await r.api.deleteMeal('shared-reference');
+  assert.equal(r.blobs.has(finalSource.stickerMediaId), false);
+  assert.equal(r.urls.has(finalSource.stickerUri), false);
+
+  await r.api.saveMeal(meal('sample', { origin: 'sample', photoUri: 'blob:picker' }));
+  await r.api.saveMealSticker(await r.api.getMealById('sample'), 'blob:cutout');
+  const sampleSticker = (await r.api.getMealById('sample')).stickerMediaId;
+  await r.api.removeSampleData();
+  assert.equal(r.blobs.has(sampleSticker), false, 'Sample cleanup also releases its cutouts');
+  await r.api.saveMeal(meal('no-photo'));
+  await assert.rejects(r.api.saveMealSticker(await r.api.getMealById('no-photo'), 'blob:cutout'));
+  assert.equal((await r.api.getMealById('no-photo')).stickerMediaId, undefined);
 });
 
 test('related-record deletion failures roll back before any image is deleted', async () => {
@@ -591,4 +669,86 @@ test('native import preserves original bytes, bounds portrait/landscape thumbnai
     assert.equal(r.values.get(r.api.KEYS.meals), before);
   }
   await assert.rejects(r.api.saveMeal(meal('unreadable', { photoUri: 'file:///picker/gone.jpg' })), /unreadable/);
+});
+
+
+test('chairs are independent and companionship changes preserve the target meal and distinguish solo from unknown', async () => {
+  const r = runtime();
+  await r.api.savePersonProfile(person('chair', { origin: 'user' }));
+  assert.equal((await r.api.getPersonMealSummaries())[0].sharedMealCount, 0);
+  await r.api.saveMealMemory(meal('first', { peopleTags: ['just-me'] }), []);
+  await r.api.saveMealMemory(meal('second', { peopleTags: ['just-me'] }), ['chair']);
+  assert.deepEqual(r.read(r.api.KEYS.meals).find(m => m.id === 'first').peopleTags, ['just-me']);
+  assert.deepEqual(r.read(r.api.KEYS.meals).find(m => m.id === 'second').peopleTags, []);
+  assert.deepEqual(r.read(r.api.KEYS.mealCompanions).map(c => c.mealId), ['second']);
+  await r.api.setMealCompanions('second', [], undefined, false);
+  assert.deepEqual(r.read(r.api.KEYS.meals).find(m => m.id === 'second').peopleTags, []);
+  await r.api.setMealCompanions('second', [], undefined, true);
+  assert.deepEqual(r.read(r.api.KEYS.meals).find(m => m.id === 'second').peopleTags, ['just-me']);
+  r.fail('set', r.api.KEYS.mealCompanions, { after: true });
+  await assert.rejects(r.api.setMealCompanions('second', ['chair'], undefined, false), /previous data was restored/);
+  assert.deepEqual(r.read(r.api.KEYS.meals).find(m => m.id === 'second').peopleTags, ['just-me']);
+  assert.equal(r.read(r.api.KEYS.mealCompanions).length, 0);
+  await r.api.addMealCompanion('second', 'chair');
+  assert.deepEqual(r.read(r.api.KEYS.meals).find(m => m.id === 'second').peopleTags, []);
+});
+
+test('recovery keeps original images and relations, restores once, and rolls back interrupted deletion', async () => {
+  const r = runtime(); r.sources.set('blob:recovery', imageBlob());
+  await r.api.savePersonProfile(person('p'));
+  await r.api.saveMealMemory(meal('recover-me', { photoUri: 'blob:recovery' }), ['p']);
+  const original = r.read(r.api.KEYS.meals)[0].photoMediaId;
+  await r.api.trashMeal('recover-me');
+  assert.equal((await r.api.getMeals()).length, 0);
+  assert.equal((await r.api.getTrash()).length, 1);
+  assert.ok(r.blobs.has(original));
+  await r.api.restoreMeal('recover-me');
+  assert.equal((await r.api.getMeals()).length, 1);
+  assert.equal((await r.api.getMealCompanions('recover-me')).length, 1);
+  assert.equal((await r.api.getTrash()).length, 0);
+  await assert.rejects(r.api.restoreMeal('recover-me'));
+  r.fail('set', r.api.KEYS.mealCompanions, { after: true });
+  await assert.rejects(r.api.trashMeal('recover-me'), /previous data was restored/);
+  assert.equal((await r.api.getMeals()).length, 1);
+  assert.equal((await r.api.getTrash()).length, 0);
+  assert.ok(r.blobs.has(original));
+});
+
+test('archive and backup merge preserve existing records and are atomic under write failure', async () => {
+  const r = runtime(); await r.api.saveMeal(meal('local'));
+  await r.api.setMealArchived('local', true);
+  assert.ok((await r.api.getMeals())[0].archivedAt);
+  await r.api.mergeProductSnapshot({ [r.api.KEYS.meals]: [meal('local', { title: 'overwrite' }), meal('new')] });
+  assert.equal((await r.api.getMealById('local')).title, 'Lunch');
+  assert.equal((await r.api.getMeals()).length, 2);
+  await assert.rejects(r.api.mergeProductSnapshot({ '@untrusted': [] }));
+  r.fail('set', r.api.KEYS.freeMemories, { after: true });
+  await assert.rejects(r.api.mergeProductSnapshot({ [r.api.KEYS.meals]: [meal('rollback')], [r.api.KEYS.freeMemories]: [{ id: 'note' }] }), /previous data was restored/);
+  assert.equal((await r.api.getMeals()).length, 2);
+});
+
+
+test('portable ZIP carries original bytes and restores across a fresh device without losing local data', async () => {
+  const first = runtime(); first.sources.set('blob:zip-original', imageBlob('original portable bytes'));
+  await first.api.savePersonProfile(person('zip-person'));
+  await first.api.saveMealMemory(meal('zip-meal', { photoUri: 'blob:zip-original', note: 'private memory' }), ['zip-person']);
+  const backup = first.load('src/product/backup.ts');
+  const blob = await backup.createBackup(); assert.ok(blob.size > 0);
+  const parsed = await backup.readBackup(blob);
+  const originalId = first.read(first.api.KEYS.meals)[0].photoMediaId;
+  assert.equal(new TextDecoder().decode(parsed.files[`photos/${originalId}`]), await first.blobs.get(originalId).text());
+  const fresh = runtime(); await fresh.api.saveMeal(meal('keep-local', { title: 'local record' }));
+  const restore = fresh.load('src/product/backup.ts');
+  await restore.restoreBackup(parsed);
+  const restored = await fresh.api.getMealById('zip-meal');
+  assert.equal(restored.note, 'private memory'); assert.ok(restored.photoUri.startsWith('blob:'));
+  assert.equal((await fresh.api.getPeopleForMeal('zip-meal'))[0].name, 'zip-person');
+  assert.equal((await fresh.api.getMealById('keep-local')).title, 'local record');
+  const stored = fresh.read(fresh.api.KEYS.meals).find(item => item.id === 'zip-meal');
+  assert.equal(await fresh.blobs.get(stored.photoMediaId).text(), await first.blobs.get(originalId).text());
+  await restore.restoreBackup(parsed); assert.equal((await fresh.api.getMeals()).length, 2);
+  assert.throws(() => restore.validateBackup({ ...parsed.backup, data: { '@unknown': [] } }));
+  assert.throws(() => restore.validateBackup({ ...parsed.backup, data: { [first.api.KEYS.meals]: [{ id: 'bad', date: '2026-02-30' }] } }));
+  const { zipSync, strToU8 } = require('fflate');
+  await assert.rejects(restore.readBackup(new Blob([zipSync({ '../evil': strToU8('bad') })])), /Unsafe/);
 });

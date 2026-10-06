@@ -1,0 +1,9 @@
+{
+  "mode": "built-in image_gen",
+  "key": "plate-small",
+  "subject": "Pale blush apple",
+  "prompt": "Use case: illustration-story. Asset type: a single collectible icon for the Mealog food memory app, NOT a UI mockup. Draw exactly ONE cute pale blush pink apple, a simple full apple silhouette with one tiny curved cinnamon stem. Square composition, isolated centered object occupying about 72 percent of the canvas. Actual transparent background, keep alpha; no ground, no background rectangle. Fine stippled pastel pigment / soft risograph grain throughout the shape, airy softly feathered grain at edges, a few overlapping translucent peach and blush color fields inside the same apple, pale cream highlight. Fresh quiet delicate palette, low saturation, pink about #edc9cc and peach #f0d4bc; tiny stem muted clay #bc9984. Enough pigment to stay recognizable at 64px but overall very pale and gentle. Tactile editorial children's-book illustration, understated and charming, softly imperfect silhouette. No black outline, no hard vector outline, no 3D, no shiny plastic, no sticker white border, no face, no letters, no words, no watermark, no extra apple, no leaves, no other elements. Output one transparent PNG icon.",
+  "source": "/Users/qishen/.codex/generated_images/01a0947c-faa2-7dd2-a7ec-5cda5fd6e45f/exec-7b55a8a8-8165-421a-875f-fe29d63d2585.png",
+  "deployment": "plate-small.png",
+  "processing": "Downscaled to 384px with sips, alpha preserved; no creative edits."
+}

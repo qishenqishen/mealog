@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
   photoButtonText: {
     fontSize: 12,
     color: colors.secondary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   overlay: {
     flex: 1,
@@ -256,10 +256,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   title: {
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 21,
+    lineHeight: 27,
     color: colors.primary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
     marginBottom: 14,
   },
   preview: {
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     color: colors.secondary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   saveButton: {
     flex: 1,
@@ -375,6 +375,6 @@ const styles = StyleSheet.create({
   },
   saveText: {
     color: colors.background,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
 });

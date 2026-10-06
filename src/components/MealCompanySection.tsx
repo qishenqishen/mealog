@@ -120,8 +120,8 @@ export default function MealCompanySection({
 
   const selectedPersonIds = companions.map((companion) => companion.personId);
 
-  const handleSavePeople = async (personIds: string[]) => {
-    await setMealCompanions(mealId, personIds);
+  const handleSavePeople = async (personIds: string[], alone: boolean) => {
+    await setMealCompanions(mealId, personIds, undefined, alone);
     await reload();
     await onChanged?.();
   };
@@ -331,10 +331,10 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionTitle: {
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 17,
+    lineHeight: 23,
     color: colors.primary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   sectionSubtitle: {
     marginTop: 3,
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: colors.secondary,
     fontSize: 12,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   companionList: {
     gap: 9,
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   companionName: {
     fontSize: 15,
     color: colors.primary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   companionMeta: {
     marginTop: 3,
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
   linkButtonText: {
     fontSize: 11,
     color: colors.secondary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   removeButton: {
     borderRadius: 14,
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
   removeButtonText: {
     fontSize: 11,
     color: colors.destructive,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   emptyBox: {
     borderRadius: 20,
@@ -409,9 +409,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(185, 165, 138, 0.28)',
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: colors.primary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
     marginBottom: 6,
   },
   emptyBody: {
@@ -424,9 +424,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   photoTitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: colors.primary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   sharedPhotoCard: {
     borderRadius: 20,

@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 
 import {
   getMealCompanions,
@@ -21,10 +21,12 @@ import {
   softDeletePersonProfile,
 } from '../../src/storage';
 import type { MealCompanion, MealEntry, PersonProfile, SharedMealPhoto } from '../../src/types';
-import { colors, shadow } from '../../src/theme';
+import { colors, shadow, fonts } from '../../src/theme';
 import PersonAvatar from '../../src/components/PersonAvatar';
 import CreatePersonModal from '../../src/components/CreatePersonModal';
 import LoadState from '../../src/components/LoadState';
+import { mealWithPersonAction, peopleForScope } from '../../src/utils/people';
+import { scopeMeals, type BookScope } from '../../src/utils/monthlyBooks';
 
 function formatDate(dateStr: string | undefined, locale: Locale): string {
   if (!dateStr) return translate('not yet');
@@ -52,8 +54,9 @@ function confirmDelete(person: PersonProfile, onConfirm: () => void) {
 
 export default function PersonDetailPage() {
   const { t, locale } = useI18n();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, scope: requestedScope } = useLocalSearchParams<{ id: string; scope?: BookScope }>();
   const router = useRouter();
+  const navigation = useNavigation('/');
   const goBack = () => router.canGoBack() ? router.back() : router.replace('/people');
   const [person, setPerson] = useState<PersonProfile | null>(null);
   const [meals, setMeals] = useState<MealEntry[]>([]);
@@ -89,31 +92,25 @@ export default function PersonDetailPage() {
     void load();
   }, [load]));
 
+  const personalPerson = person && peopleForScope([person], meals, companions, 'personal', photos).length > 0;
+  const scope: BookScope = requestedScope === 'sample' ? 'sample'
+    : requestedScope === 'personal' ? 'personal'
+      : personalPerson || person?.origin !== 'sample' ? 'personal' : 'sample';
+  const visiblePerson = person && peopleForScope([person], meals, companions, scope, photos).length > 0;
+  const scopedMeals = useMemo(() => scopeMeals(meals, scope), [meals, scope]);
   const sharedMealIds = useMemo(
     () => new Set(companions.filter((item) => item.personId === id).map((item) => item.mealId)),
     [companions, id],
   );
-
   const sharedMeals = useMemo(
-    () => meals
-      .filter((meal) => sharedMealIds.has(meal.id))
+    () => scopedMeals.filter((meal) => sharedMealIds.has(meal.id))
       .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)),
-    [meals, sharedMealIds],
+    [scopedMeals, sharedMealIds],
   );
-
-  const sharedPhotos = useMemo(
-    () => photos.filter((photo) => photo.taggedPersonIds.includes(id)),
-    [id, photos],
-  );
-
-  const notesMentioningPerson = useMemo(() => {
-    if (!person) return [];
-    const names = [person.name, person.nickname].filter(Boolean).map((value) => value!.toLowerCase());
-    return sharedMeals.filter((meal) => {
-      const note = meal.note?.toLowerCase();
-      return note && names.some((name) => note.includes(name));
-    });
-  }, [person, sharedMeals]);
+  const sharedPhotos = useMemo(() => {
+    const mealIds = new Set(scopedMeals.map((meal) => meal.id));
+    return photos.filter((photo) => mealIds.has(photo.mealId) && photo.taggedPersonIds.includes(id));
+  }, [id, photos, scopedMeals]);
 
   const dates = sharedMeals.map((meal) => meal.date).sort();
   const firstDate = dates[0];
@@ -129,7 +126,7 @@ export default function PersonDetailPage() {
     );
   }
 
-  if (!person) {
+  if (!person || (!person.deletedAt && !visiblePerson)) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
@@ -141,6 +138,10 @@ export default function PersonDetailPage() {
       </SafeAreaView>
     );
   }
+
+  const displayName = person.nickname ?? person.name;
+  // Return to the existing tab tree; merge also preserves an in-progress edit target.
+  const recordTogether = () => navigation.dispatch(mealWithPersonAction(person.id));
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -157,82 +158,70 @@ export default function PersonDetailPage() {
         </View>
 
         <View style={styles.hero}>
-          <PersonAvatar person={person} size={86} />
-          <Text style={styles.name}>{person.nickname ?? person.name}</Text>
+          <PersonAvatar person={person} size={60} />
+          <Text style={styles.name}>{locale === 'zh' ? `我和${displayName}的餐桌` : `My table with ${displayName}`}</Text>
           <Text style={styles.relationship}>
             {person.deletedAt ? t('Deleted person') : t(person.relationship ?? 'A remembered seat')}
           </Text>
           {person.note ? <Text style={styles.note}>{person.note}</Text> : null}
+          {scope === 'sample' ? <Text style={styles.scopeNote}>{locale === 'zh' ? '这里是示例回忆，新增的一餐会存入「我的餐桌」。' : 'These are example memories. New meals will be saved to My table.'}</Text> : null}
+          {visiblePerson && !person.deletedAt ? (
+            <Pressable accessibilityRole="button" style={styles.recordButton} onPress={recordTogether}>
+              <Text style={styles.recordButtonText}>{locale === 'zh' ? `记下和${displayName}的一餐` : `Record a meal with ${displayName}`}</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <LoadState error={error} onRetry={load} />
 
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{sharedMeals.length}</Text>
-            <Text style={styles.statLabel}>{t("shared meals")}</Text>
+        {sharedMeals.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{locale === 'zh' ? '一起留下的餐食' : 'Meals we remember'}</Text>
+            {sharedMeals.map((meal) => {
+              const photo = meal.photoThumbnailUri || meal.photoUri;
+              return (
+                <Pressable accessibilityRole="button" key={meal.id} style={styles.mealRow}
+                  onPress={() => router.push({ pathname: '/meal/[id]', params: { id: meal.id, scope } })}>
+                  {photo ? <Image source={{ uri: photo }} style={styles.mealPhoto} accessibilityLabel={meal.title} /> : null}
+                  <View style={styles.mealText}>
+                    <Text style={styles.mealMeta}>{formatDate(meal.date, locale)} · {meal.time}</Text>
+                    {meal.title ? <Text style={styles.mealTitle}>{meal.title}</Text> : null}
+                    {meal.note ? <Text style={styles.noteBody}>{meal.note}</Text> : null}
+                  </View>
+                </Pressable>
+              );
+            })}
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{sharedPhotos.length}</Text>
-            <Text style={styles.statLabel}>{t("photographs")}</Text>
+        ) : (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>{person.deletedAt
+              ? (locale === 'zh' ? '这个座位已收起，留下的回忆依然保留。' : 'This seat has been put away; saved memories remain.')
+              : (locale === 'zh' ? '下次同桌，把这一餐留在这里。' : 'Next time you share a table, keep the meal here.')}</Text>
           </View>
-        </View>
+        )}
 
-        <View style={styles.paper}>
-          <Text style={styles.paperLine}>{t('First meal together: {date}', { date: formatDate(firstDate, locale) })}</Text>
-          <Text style={styles.paperLine}>{t('Recently shared: {date}', { date: formatDate(lastDate, locale) })}</Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("Shared meals")}</Text>
-          {sharedMeals.length > 0 ? (
-            sharedMeals.map((meal) => (
-              <Pressable
-                accessibilityRole="button"
-                key={meal.id}
-                style={styles.mealRow}
-                onPress={() => router.push(`/meal/${meal.id}`)}
-              >
-                <Text style={styles.mealTitle}>{meal.title}</Text>
-                <Text style={styles.mealMeta}>{formatDate(meal.date, locale)} · {meal.time}</Text>
-              </Pressable>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>{t("No shared meals yet.")}</Text>
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("Shared photographs")}</Text>
-          {sharedPhotos.length > 0 ? (
+        {sharedPhotos.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('Shared photographs')}</Text>
             <View style={styles.photoGrid}>
               {sharedPhotos.map((photo) => (
-                <View key={photo.id} style={styles.photoCard}>
-                  <Image source={{ uri: photo.imageUrl }} style={styles.photo} />
-                  <Text style={styles.photoCaption} numberOfLines={2}>
-                    {photo.caption ?? t('Together at this table')}
-                  </Text>
-                </View>
+                <Pressable key={photo.id} accessibilityRole="button" style={styles.photoCard}
+                  onPress={() => router.push({ pathname: '/meal/[id]', params: { id: photo.mealId, scope } })}>
+                  <Image source={{ uri: photo.thumbnailUri || photo.imageUrl }} style={styles.photo} />
+                  <Text style={styles.photoCaption} numberOfLines={2}>{photo.caption ?? t('Together at this table')}</Text>
+                </Pressable>
               ))}
             </View>
-          ) : (
-            <Text style={styles.emptyText}>{t("No shared photographs yet.")}</Text>
-          )}
-        </View>
+          </View>
+        ) : null}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("Notes mentioning this person")}</Text>
-          {notesMentioningPerson.length > 0 ? (
-            notesMentioningPerson.map((meal) => (
-              <View key={meal.id} style={styles.noteCard}>
-                <Text style={styles.noteMeal}>{meal.title}</Text>
-                <Text style={styles.noteBody}>{meal.note}</Text>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>{t("No notes mention this person yet.")}</Text>
-          )}
-        </View>
+        {sharedMeals.length > 0 ? (
+          <View style={styles.paper}>
+            <Text style={styles.paperLine}>{t('{count} shared meals', { count: sharedMeals.length })}</Text>
+            <Text style={styles.paperLine}>{locale === 'zh' ? `最早留下的一餐：${formatDate(firstDate, locale)}` : `Earliest recorded meal: ${formatDate(firstDate, locale)}`}</Text>
+            <Text style={styles.paperLine}>{t('Recently shared: {date}', { date: formatDate(lastDate, locale) })}</Text>
+          </View>
+        ) : null}
 
         {!person.deletedAt ? (
           <Pressable
@@ -257,8 +246,8 @@ export default function PersonDetailPage() {
         person={person}
         onClose={() => setEditing(false)}
         onSaved={async () => {
-          setEditing(false);
           await load();
+          router.setParams({ scope: 'personal' });
         }}
       />
     </SafeAreaView>
@@ -291,7 +280,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   navButton: {
-    borderRadius: 18,
+    borderRadius: 2,
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: 'rgba(255, 253, 248, 0.55)',
@@ -301,23 +290,22 @@ const styles = StyleSheet.create({
   navButtonText: {
     fontSize: 13,
     color: colors.primary,
-    fontStyle: 'italic',
   },
   hero: {
     alignItems: 'center',
     borderRadius: 30,
     paddingHorizontal: 22,
-    paddingVertical: 26,
+    paddingVertical: 20,
     marginBottom: 20,
     backgroundColor: 'rgba(255, 253, 248, 0.72)',
     ...shadow.soft,
   },
-  name: {
+  name: { fontFamily: fonts.editorial,
     marginTop: 13,
-    fontSize: 32,
-    lineHeight: 38,
+    fontSize: 26,
+    lineHeight: 34,
+    textAlign: 'center',
     color: colors.primary,
-    fontStyle: 'italic',
   },
   relationship: {
     marginTop: 4,
@@ -332,30 +320,28 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     color: colors.mutedText,
   },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 14,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 17,
-    backgroundColor: 'rgba(255, 253, 248, 0.58)',
-  },
-  statNumber: {
-    fontSize: 28,
-    lineHeight: 32,
-    color: colors.secondary,
-    fontStyle: 'italic',
-  },
-  statLabel: {
+  scopeNote: {
+    marginTop: 10,
     fontSize: 12,
     color: colors.mutedText,
   },
+  recordButton: {
+    marginTop: 18,
+    minHeight: 46,
+    borderRadius: 23,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  recordButtonText: {
+    color: colors.background,
+    textAlign: 'center',
+    fontSize: 14,
+    lineHeight: 20,
+  },
   paper: {
-    borderRadius: 22,
+    borderRadius: 2,
     paddingHorizontal: 17,
     paddingVertical: 15,
     marginBottom: 24,
@@ -369,24 +355,30 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 25,
   },
-  sectionTitle: {
-    fontSize: 22,
-    lineHeight: 28,
+  sectionTitle: { fontFamily: fonts.editorial,
+    fontSize: 17,
+    lineHeight: 23,
     color: colors.primary,
-    fontStyle: 'italic',
     marginBottom: 12,
   },
   mealRow: {
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 9,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 16,
     backgroundColor: 'rgba(255, 253, 248, 0.58)',
+  },
+  mealPhoto: {
+    width: '100%',
+    aspectRatio: 1.35,
+  },
+  mealText: {
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 7,
   },
   mealTitle: {
     fontSize: 16,
     color: colors.primary,
-    fontStyle: 'italic',
   },
   mealMeta: {
     marginTop: 4,
@@ -415,23 +407,18 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: colors.mutedText,
   },
-  noteCard: {
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 9,
-    backgroundColor: 'rgba(255, 253, 248, 0.58)',
-  },
-  noteMeal: {
-    fontSize: 15,
-    color: colors.primary,
-    fontStyle: 'italic',
-    marginBottom: 5,
-  },
   noteBody: {
     fontSize: 13,
     lineHeight: 20,
     color: colors.mutedText,
+  },
+  emptyBox: {
+    marginBottom: 24,
+    borderRadius: 2,
+    padding: 24,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(185, 165, 138, 0.28)',
   },
   emptyText: {
     fontSize: 13,
@@ -440,13 +427,12 @@ const styles = StyleSheet.create({
   },
   deleteProfile: {
     alignSelf: 'center',
-    borderRadius: 18,
+    borderRadius: 2,
     paddingHorizontal: 18,
     paddingVertical: 10,
     backgroundColor: colors.destructiveSoft,
   },
   deleteProfileText: {
     color: colors.destructive,
-    fontStyle: 'italic',
   },
 });

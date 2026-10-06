@@ -6,7 +6,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { getUserIdentity, updateLocalProfile } from '../src/auth';
 import { useI18n } from '../src/i18n';
 import { removeSampleData } from '../src/storage';
-import { colors } from '../src/theme';
+import { colors, fonts } from '../src/theme';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -114,7 +114,12 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{copy('Kept on this device', '保存在这台设备')}</Text>
+          <Text style={styles.sectionTitle}>{copy('Your memories belong to you', '你的记忆属于你')}</Text>
+          <Pressable accessibilityRole="button" onPress={() => router.push('/memory-tools?tab=privacy')} style={styles.secondary}><Text style={styles.languageText}>{copy('Privacy, ZIP backup & restore', '隐私、完整备份与恢复')}</Text></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => router.push('/memory-tools?tab=trash')} style={styles.secondary}><Text style={styles.languageText}>{copy('Recover deleted memories', '恢复误删记忆')}</Text></Pressable>
+        </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{copy('Kept on this device' , '保存在这台设备')}</Text>
           <Text style={styles.body}>{copy('Your photos are saved as independent copies. Returning in this browser keeps your memories. Clearing site data removes them; cloud backup is not available yet.', '照片会保存为独立副本。在同一浏览器再次打开时，记忆仍然保留。清除本站数据会删除它们；目前尚无云端备份。')}</Text>
           <Pressable accessibilityRole="button" onPress={() => router.push('/onboarding')} style={styles.secondary}>
             <Text style={styles.languageText}>{copy('Welcome & permissions', '欢迎页与权限')}</Text>
@@ -132,20 +137,20 @@ const styles = StyleSheet.create({
   backText: { fontSize: 32, color: colors.primary },
   navTitle: { fontSize: 15, color: colors.primary },
   scroll: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 32 },
-  title: { fontSize: 30, lineHeight: 40, color: colors.primary, fontStyle: 'italic', marginBottom: 6 },
-  body: { fontSize: 14, lineHeight: 23, color: colors.mutedText },
+  title: { fontFamily: fonts.editorial, fontSize: 26, lineHeight: 35, color: colors.primary, fontStyle: 'italic', marginBottom: 6 },
+  body: { fontFamily: fonts.body, fontSize: 14, lineHeight: 23, color: colors.mutedText },
   section: { paddingVertical: 22, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.muted + '55' },
-  label: { fontSize: 13, color: colors.mutedText, marginBottom: 9 },
+  label: { fontFamily: fonts.body, fontSize: 13, color: colors.mutedText, marginBottom: 9 },
   languages: { flexDirection: 'row', gap: 8 },
   language: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 44, borderRadius: 8, borderWidth: 1, borderColor: colors.muted },
   selected: { backgroundColor: colors.primary, borderColor: colors.primary },
   languageText: { fontSize: 14, color: colors.primary },
   selectedText: { color: colors.background },
-  input: { minHeight: 46, padding: 12, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.muted, borderRadius: 8, fontSize: 16, color: colors.primary, marginBottom: 16 },
+  input: { fontFamily: fonts.body, minHeight: 46, padding: 12, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.muted, borderRadius: 8, fontSize: 16, color: colors.primary, marginBottom: 16 },
   note: { minHeight: 86, textAlignVertical: 'top' },
   primary: { minHeight: 46, borderRadius: 8, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   primaryText: { fontSize: 14, fontWeight: '600', color: colors.background },
   secondary: { minHeight: 46, justifyContent: 'center', alignItems: 'center', marginTop: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.muted, borderRadius: 8 },
-  sectionTitle: { fontSize: 20, lineHeight: 28, color: colors.primary, marginBottom: 8 },
+  sectionTitle: { fontFamily: fonts.editorial, fontSize: 17, lineHeight: 24, color: colors.primary, marginBottom: 8 },
   message: { fontSize: 14, lineHeight: 22, color: colors.secondary, paddingVertical: 16 },
 });

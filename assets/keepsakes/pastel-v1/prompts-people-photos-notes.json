@@ -1,0 +1,213 @@
+[
+  {
+    "key": "people-regular-seat",
+    "subject": "one sky-blue stool",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one sky-blue stool. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-6df4b9ab-4b7a-49c1-8069-3f6904d9ec3a.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-6df4b9ab-4b7a-49c1-8069-3f6904d9ec3a.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-regular-seat.png"
+  },
+  {
+    "key": "people-cushion-chair",
+    "subject": "one pale blush cushioned chair",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one pale blush cushioned chair. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-4ed61647-20c9-4a6e-878e-f770fbccf2be.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-4ed61647-20c9-4a6e-878e-f770fbccf2be.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-cushion-chair.png"
+  },
+  {
+    "key": "people-old-friend-seat",
+    "subject": "one butter-yellow bentwood chair",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one butter-yellow bentwood chair. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-9ee426d1-3a14-4a38-84db-a96fa70fe7ec.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-9ee426d1-3a14-4a38-84db-a96fa70fe7ec.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-old-friend-seat.png"
+  },
+  {
+    "key": "people-open-table",
+    "subject": "one light lavender small round table, entirely EMPTY tabletop",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one light lavender small round table, entirely EMPTY tabletop. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-3db50eeb-d883-4b9d-80e2-a2d7311644e6.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-3db50eeb-d883-4b9d-80e2-a2d7311644e6.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-open-table.png"
+  },
+  {
+    "key": "people-many-seats",
+    "subject": "one pale peach milk tea cup with a few pearls and one straw",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one pale peach milk tea cup with a few pearls and one straw. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-d7e79cb4-c4b2-4c36-89e6-fcccd002ea38.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-d7e79cb4-c4b2-4c36-89e6-fcccd002ea38.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-many-seats.png"
+  },
+  {
+    "key": "people-two-seats",
+    "subject": "ONE pale mint teacup, no saucer",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: ONE pale mint teacup, no saucer. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-021d289c-b86e-4ff7-808c-969a7f6cb2c7.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-021d289c-b86e-4ff7-808c-969a7f6cb2c7.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-two-seats.png"
+  },
+  {
+    "key": "people-full-table",
+    "subject": "one powder-blue dining fork with a rounded handle",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one powder-blue dining fork with a rounded handle. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-45e82fb6-9657-4232-87be-362197bf1f35.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-45e82fb6-9657-4232-87be-362197bf1f35.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-full-table.png"
+  },
+  {
+    "key": "people-polaroid-two",
+    "subject": "one pale pink single cherry with its stem",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one pale pink single cherry with its stem. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-4cf74b6a-22ec-449c-bb2b-93494ae8f58a.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-4cf74b6a-22ec-449c-bb2b-93494ae8f58a.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-polaroid-two.png"
+  },
+  {
+    "key": "people-house-full",
+    "subject": "one sage green teapot",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one sage green teapot. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-c3846a3e-2ff0-46ba-82fa-1de9dc722db9.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-c3846a3e-2ff0-46ba-82fa-1de9dc722db9.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-house-full.png"
+  },
+  {
+    "key": "people-season-seats",
+    "subject": "one seafoam wooden chair",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one seafoam wooden chair. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-f4be3f5a-64b9-4858-91f8-fe13fea208cf.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-f4be3f5a-64b9-4858-91f8-fe13fea208cf.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-season-seats.png"
+  },
+  {
+    "key": "people-photo-together",
+    "subject": "one lavender grape bunch, one connected fruit object",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one lavender grape bunch, one connected fruit object. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-2c6a514a-85da-486b-8d83-ddef0e3d4969.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-2c6a514a-85da-486b-8d83-ddef0e3d4969.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-photo-together.png"
+  },
+  {
+    "key": "people-reunion-ring",
+    "subject": "one pale apricot donut, no sprinkles",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one pale apricot donut, no sprinkles. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-72298d46-5d8f-4627-bb3a-19e81335404a.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-72298d46-5d8f-4627-bb3a-19e81335404a.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/people-reunion-ring.png"
+  },
+  {
+    "key": "photo-memory-box",
+    "subject": "one sage avocado half",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one sage avocado half. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-a837752a-8d18-472d-bf09-d458771b2065.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-a837752a-8d18-472d-bf09-d458771b2065.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/photo-memory-box.png"
+  },
+  {
+    "key": "photo-strip",
+    "subject": "one pale coral half grapefruit",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one pale coral half grapefruit. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-5cb2af14-0af7-423a-863b-952c9175a397.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-5cb2af14-0af7-423a-863b-952c9175a397.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/photo-strip.png"
+  },
+  {
+    "key": "photo-album",
+    "subject": "one lilac blueberry, a single berry",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one lilac blueberry, a single berry. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-da380515-2120-4018-b586-84db1eec06f5.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-da380515-2120-4018-b586-84db1eec06f5.png",
+    "selected": false,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/photo-album.png"
+  },
+  {
+    "key": "photo-family-album",
+    "subject": "one pale golden pineapple, single fruit, minimal diamond texture",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one pale golden pineapple, single fruit, minimal diamond texture. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-ef85de4b-ccdb-409a-a3ef-d9ce6b68b717.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-ef85de4b-ccdb-409a-a3ef-d9ce6b68b717.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/photo-family-album.png"
+  },
+  {
+    "key": "note-journal",
+    "subject": "one pale blush wooden spoon",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one pale blush wooden spoon. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-d649ad54-a719-48c8-b934-a6818f4d7554.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-d649ad54-a719-48c8-b934-a6818f4d7554.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/note-journal.png"
+  },
+  {
+    "key": "note-margins",
+    "subject": "one powder-blue teaspoon",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one powder-blue teaspoon. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-a08af05d-1c92-4da2-8b87-837e5ad1fb66.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-a08af05d-1c92-4da2-8b87-837e5ad1fb66.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/note-margins.png"
+  },
+  {
+    "key": "photo-album",
+    "subject": "one lilac blueberry, a single berry",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one lilac blueberry, a single berry. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.\nPalette correction: the blueberry is almost WHITE with only a whisper of PALE LILAC (base #F0EAF8, shaded field #DCD2EC). Keep luminosity high across the ENTIRE berry, including its small star calyx. Absolutely no dark purple, deep blue, brown, dark shadow or saturated pigment. A milky pale lilac berry, simplified into a soft flat editorial shape. Preserve real transparent background.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-6a8056f5-42fc-45a2-940c-7e6c555b8cb5.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-6a8056f5-42fc-45a2-940c-7e6c555b8cb5.png",
+    "replacesPriorVariant": true,
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/photo-album.png"
+  },
+  {
+    "key": "note-worn-book",
+    "subject": "one lavender butter knife, cute rounded blunt end",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one lavender butter knife, cute rounded blunt end. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-81b17a4f-ad81-40b1-a2e8-7251ed09f377.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-81b17a4f-ad81-40b1-a2e8-7251ed09f377.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/note-worn-book.png"
+  },
+  {
+    "key": "note-book-meals",
+    "subject": "one sage little notebook, closed, no markings",
+    "prompt": "Use case: illustration-story. Asset type: a tiny collectible object illustration for the Mealog food-memory app. Subject: one sage little notebook, closed, no markings. Exactly ONE centered simple cute object occupying about 72% of a square canvas, with generous empty space around it. Actual fully transparent background, alpha channel, no colored or white background. Style: airy children's-book and editorial illustration; VERY PALE, low-saturation, milky pastel colors; fine stippled pastel pigment and soft risograph grain, feathered pigment edge. Use 2-3 overlapping translucent color fields INSIDE this same object for subtle depth. Slightly more pigmented edge region but absolutely NO drawn outlines. The object must be unmistakably identifiable when reduced to 64 pixels. Avoid faces, text, lettering, logos, watermarks, 3D rendering, photorealism, sticker borders, background discs, ground shadows, props or scenes. This is one isolated object, not a scene or a collection. Output a transparent square PNG.",
+    "output_hint": "Generated images are saved to /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480 as /Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-083316c4-c7cd-4ba8-8476-d0154ab8b509.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+    "sourcePath": "/Users/qishen/.codex/generated_images/01a0969a-8db7-7833-9ff0-46690431c480/exec-083316c4-c7cd-4ba8-8476-d0154ab8b509.png",
+    "selected": true,
+    "tool": "built-in image_gen",
+    "projectPath": "/Users/qishen/Desktop/Mealog/Mealogue Project/assets/keepsakes/pastel-v1/note-book-meals.png"
+  }
+]

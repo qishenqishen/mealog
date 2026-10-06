@@ -18,6 +18,7 @@ import PersonAvatar from './PersonAvatar';
 import CreatePersonModal from './CreatePersonModal';
 import SharedPhotoUploader from './SharedPhotoUploader';
 import LoadState from './LoadState';
+import { peopleForScope } from '../utils/people';
 
 type PeopleStats = Record<string, {
   count: number;
@@ -94,6 +95,8 @@ export default function PeoplePickerSheet({
   visible,
   mealId,
   selectedPersonIds,
+  ateAlone = false,
+  scope = 'personal',
   onClose,
   onSave,
   onChanged,
@@ -101,8 +104,10 @@ export default function PeoplePickerSheet({
   visible: boolean;
   mealId?: string;
   selectedPersonIds: string[];
+  ateAlone?: boolean;
+  scope?: 'personal' | 'sample';
   onClose: () => void;
-  onSave: (personIds: string[]) => Promise<void> | void;
+  onSave: (personIds: string[], alone: boolean) => Promise<void> | void;
   onChanged?: () => Promise<void> | void;
 }) {
   const { t, locale } = useI18n();
@@ -110,6 +115,7 @@ export default function PeoplePickerSheet({
   const [meals, setMeals] = useState<MealEntry[]>([]);
   const [companions, setCompanions] = useState<MealCompanion[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>(selectedPersonIds);
+  const [alone, setAlone] = useState(ateAlone);
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const [photoToolsOpen, setPhotoToolsOpen] = useState(false);
@@ -117,10 +123,12 @@ export default function PeoplePickerSheet({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [reloadToken, setReloadToken] = useState(0);
+  const [activeScope, setActiveScope] = useState(scope);
 
   useEffect(() => {
     if (!visible) return;
     setSelectedIds(selectedPersonIds);
+    setAlone(ateAlone);
     setQuery('');
     setPhotoToolsOpen(false);
   }, [visible]);
@@ -133,9 +141,16 @@ export default function PeoplePickerSheet({
     Promise.all([getPeopleProfiles(), getMeals(), getMealCompanions()]).then(
       ([nextPeople, nextMeals, nextCompanions]) => {
         if (!active) return;
-        setPeople(nextPeople);
-        setMeals(nextMeals);
-        setCompanions(nextCompanions);
+        const meal = nextMeals.find(item => item.id === mealId);
+        const nextScope = meal ? (meal.origin === 'sample' ? 'sample' : 'personal') : scope;
+        setActiveScope(nextScope);
+        const scopedPeople = peopleForScope(nextPeople, nextMeals, nextCompanions, nextScope);
+        setPeople(nextPeople.filter(person => scopedPeople.includes(person) || selectedPersonIds.includes(person.id)));
+        if (meal) setAlone(meal.peopleTags.includes('just-me') && selectedPersonIds.length === 0);
+        const scopedMeals = nextMeals.filter(item => nextScope === 'sample' ? item.origin === 'sample' : item.origin !== 'sample');
+        const mealIds = new Set(scopedMeals.map(item => item.id));
+        setMeals(scopedMeals);
+        setCompanions(nextCompanions.filter(item => mealIds.has(item.mealId)));
       },
     ).catch(() => {
       if (active) setError('Could not load people.');
@@ -148,24 +163,9 @@ export default function PeoplePickerSheet({
   const stats = useMemo(() => buildStats(meals, companions), [companions, meals]);
 
   const filteredPeople = useMemo(
-    () => people.filter((person) => personMatches(person, query)),
-    [people, query, locale],
-  );
-
-  const recentPeople = useMemo(
-    () => [...people]
-      .filter((person) => stats[person.id]?.lastDate)
-      .sort((a, b) => (stats[b.id]?.lastDate ?? '').localeCompare(stats[a.id]?.lastDate ?? ''))
-      .slice(0, 5),
-    [people, stats],
-  );
-
-  const frequentPeople = useMemo(
-    () => [...people]
-      .filter((person) => (stats[person.id]?.count ?? 0) > 0)
-      .sort((a, b) => (stats[b.id]?.count ?? 0) - (stats[a.id]?.count ?? 0))
-      .slice(0, 5),
-    [people, stats],
+    () => people.filter(person => personMatches(person, query))
+      .sort((a, b) => (stats[b.id]?.lastDate ?? b.createdAt).localeCompare(stats[a.id]?.lastDate ?? a.createdAt)),
+    [people, query, locale, stats],
   );
 
   const selectedPeople = useMemo(
@@ -174,6 +174,7 @@ export default function PeoplePickerSheet({
   );
 
   const togglePerson = (id: string) => {
+    setAlone(false);
     setSelectedIds((current) => (
       current.includes(id)
         ? current.filter((item) => item !== id)
@@ -181,12 +182,12 @@ export default function PeoplePickerSheet({
     ));
   };
 
-  const handleSave = async (ids = selectedIds) => {
-    if (saving || loading) return;
+  const handleSave = async () => {
+    if (saving || loading || error) return;
     setSaving(true);
     setError(undefined);
     try {
-      await onSave(ids);
+      await onSave(selectedIds, alone);
       await onChanged?.();
       onClose();
     } catch {
@@ -235,6 +236,10 @@ export default function PeoplePickerSheet({
               style={styles.searchInput}
             />
 
+              <Pressable accessibilityRole="button" style={styles.optionButton} onPress={() => setCreating(true)}>
+                <Text style={styles.optionText}>{locale === 'zh' ? '＋ 加一把椅子 · 添加同桌人' : '＋ Add a chair · Someone new'}</Text>
+              </Pressable>
+
             {selectedPeople.length > 0 ? (
               <View style={styles.selectedStrip}>
                 {selectedPeople.map((person) => (
@@ -261,25 +266,13 @@ export default function PeoplePickerSheet({
                 <Text style={styles.emptyBody}>{t("Add this person to your table.")}</Text>
               </View>
             ) : (
-              <>
-                {renderPersonSection(t('Recent people'), recentPeople, (person) => {
-                  const lastDate = stats[person.id]?.lastDate;
-                  return lastDate ? t('Last shared {date}', { date: lastDate }) : undefined;
-                })}
-                {renderPersonSection(t('Frequently added people'), frequentPeople, (person) => {
-                  const count = stats[person.id]?.count ?? 0;
-                  return count > 0 ? t('{count} shared meals', { count }) : undefined;
-                })}
-                {renderPersonSection(t('People at my table'), filteredPeople, (person) => (
-                  t(person.relationship ?? 'A remembered seat')
-                ))}
-              </>
+              renderPersonSection(activeScope === 'sample' ? (locale === 'zh' ? '示例人物' : 'Example people') : t('People at my table'), filteredPeople, person => {
+                const lastDate = stats[person.id]?.lastDate;
+                return lastDate ? t('Last shared {date}', { date: lastDate }) : t(person.relationship ?? 'A remembered seat');
+              })
             )}
 
             <View style={styles.optionGroup}>
-              <Pressable accessibilityRole="button" style={styles.optionButton} onPress={() => setCreating(true)}>
-                <Text style={styles.optionText}>{t("Add someone new")}</Text>
-              </Pressable>
               <Pressable
                 accessibilityRole="button"
                 style={styles.optionButton}
@@ -300,8 +293,9 @@ export default function PeoplePickerSheet({
                   ) : null}
                 </View>
               ) : null}
-              <Pressable accessibilityRole="button" style={styles.optionButton} onPress={() => handleSave([])} disabled={saving || loading}>
-                <Text style={styles.optionText}>{t("I ate alone")}</Text>
+              <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: alone }} style={styles.optionButton}
+                onPress={() => { setAlone(value => !value); setSelectedIds([]); }} disabled={saving || loading || Boolean(error)}>
+                <Text style={styles.optionText}>{alone ? '✓ ' : ''}{t("I ate alone")}</Text>
               </Pressable>
             </View>
           </ScrollView>
@@ -312,11 +306,11 @@ export default function PeoplePickerSheet({
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-              disabled={saving || loading}
+              style={[styles.saveButton, (saving || loading || Boolean(error)) && styles.saveButtonDisabled]}
+              disabled={saving || loading || Boolean(error)}
               onPress={() => handleSave()}
             >
-              <Text style={styles.saveText}>{saving ? t('Saving...') : t('Add to this meal')}</Text>
+              <Text style={styles.saveText}>{saving ? t('Saving...') : locale === 'zh' ? '确认这一餐的同伴' : 'Confirm meal companions'}</Text>
             </Pressable>
           </View>
         </View>
@@ -326,6 +320,7 @@ export default function PeoplePickerSheet({
         visible={creating}
         onClose={() => setCreating(false)}
         onSaved={async (person) => {
+          setAlone(false);
           setPeople((current) => {
             const index = current.findIndex((item) => item.id === person.id);
             if (index >= 0) {
@@ -370,8 +365,8 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   title: {
-    fontSize: 28,
-    lineHeight: 35,
+    fontSize: 26,
+    lineHeight: 32,
     color: colors.primary,
     fontStyle: 'italic',
     marginBottom: 14,
@@ -475,7 +470,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(185, 165, 138, 0.28)',
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: colors.primary,
     fontStyle: 'italic',
     marginBottom: 6,

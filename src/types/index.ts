@@ -71,6 +71,8 @@ export interface MealLocation {
 export interface MealEntry {
   id: string;
   origin?: 'sample' | 'user';
+  archivedAt?: string;
+  sourceFingerprint?: string;
   userId?: string;
   title: string;
   mealType: MealType;
@@ -81,6 +83,9 @@ export interface MealEntry {
   photoUri?: string;
   photoThumbnailUri?: string;
   photoStorageStatus?: MediaStorageStatus;
+  /** Transparent food cutout, stored separately from the original photograph. */
+  stickerMediaId?: string;
+  stickerUri?: string;
   location?: string;
   locationDetails?: MealLocation;
   moodTags: MoodTag[];

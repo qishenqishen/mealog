@@ -13,16 +13,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
-import { deleteMeal, getMealById } from '../../src/storage';
+import { trashMeal, getMealById } from '../../src/storage';
 import {
   DEFAULT_COMPANIONSHIP_TAGS,
   type MealEntry,
   type MealType,
   type MoodTag,
 } from '../../src/types';
-import { colors, shadow } from '../../src/theme';
+import { colors, shadow, fonts } from '../../src/theme';
 import MealCompanySection from '../../src/components/MealCompanySection';
 import LoadState from '../../src/components/LoadState';
+import FoodSticker from '../../src/components/FoodSticker';
+import { createMealSticker } from '../../src/services/foodStickers';
+import * as ImagePicker from 'expo-image-picker';
+import { requestPhotosPermission } from '../../src/services/permissions';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -80,12 +84,12 @@ function getPeopleLabels(meal: MealEntry): string[] {
 function confirmDelete(onConfirm: () => void) {
   if (Platform.OS === 'web') {
     // eslint-disable-next-line no-restricted-globals
-    const yes = confirm(translate('Delete this meal? This memory will be removed from your archive.'));
+    const yes = confirm(translate('Move this memory to the recovery area? You can restore it from Settings.'));
     if (yes) onConfirm();
   } else {
     Alert.alert(
       translate('Delete this meal?'),
-      translate('This memory will be removed from your archive.'),
+      translate('The memory and photos can be restored from Settings.'),
       [
         { text: translate('Cancel'), style: 'cancel' },
         { text: translate('Delete'), style: 'destructive', onPress: onConfirm },
@@ -136,12 +140,15 @@ function SeatMark({ label }: { label: string }) {
 
 export default function MealDetailScreen() {
   const { t, locale } = useI18n();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, stickerNotice } = useLocalSearchParams<{ id: string; stickerNotice?: string }>();
   const router = useRouter();
   const goBack = () => router.canGoBack() ? router.back() : router.replace('/');
   const [meal, setMeal] = useState<MealEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [makingSticker, setMakingSticker] = useState(false);
+  const [stickerError, setStickerError] = useState<string>();
+  const zh = locale === 'zh';
 
   const loadMeal = useCallback(async () => {
     if (!id) { setLoading(false); return; }
@@ -164,7 +171,7 @@ export default function MealDetailScreen() {
     if (!meal) return;
     confirmDelete(async () => {
       try {
-        await deleteMeal(meal.id);
+        await trashMeal(meal.id);
         goBack();
       } catch {
         setError('Could not delete this memory. Please try again.');
@@ -175,6 +182,28 @@ export default function MealDetailScreen() {
   const handleEdit = () => {
     if (!meal) return;
     router.push(`/add?editMealId=${encodeURIComponent(meal.id)}`);
+  };
+
+  const handleSticker = async (importCutout = false) => {
+    if (!meal || makingSticker) return;
+    setMakingSticker(true); setStickerError(undefined);
+    try {
+      let uri: string | undefined;
+      if (importCutout) {
+        const permission = await requestPhotosPermission();
+        if (!permission.granted) throw new Error(zh ? '请允许选择照片后重试。' : 'Allow photo access and try again.');
+        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 1 });
+        if (result.canceled) return;
+        uri = result.assets[0]?.uri;
+        if (!uri) return;
+      }
+      await createMealSticker(meal, undefined, uri);
+      setMeal((await getMealById(meal.id)) ?? null);
+    } catch (error) {
+      setStickerError(zh
+        ? '贴纸暂时未完成。请重试，或导入背景透明的 PNG；原图和餐食已经保留。'
+        : (error instanceof Error ? error.message : 'The sticker could not be made. Your memory is kept.'));
+    } finally { setMakingSticker(false); }
   };
 
   const moodTags = useMemo(() => (meal ? getMoodTags(meal) : []), [meal]);
@@ -254,6 +283,34 @@ export default function MealDetailScreen() {
             <Text style={styles.date}>{formatDate(meal.date, locale)}</Text>
           </View>
 
+          {meal.note ? <Text style={[styles.noteText, { marginBottom: 24 }]}>{meal.note}</Text> : null}
+          {meal.photoUri ? <View style={styles.stickerPanel}>
+            <View style={styles.stickerHeader}>
+              {meal.stickerUri ? <FoodSticker uri={meal.stickerUri} size={94} accessibilityLabel={zh ? `${title}的餐食贴纸` : `${title} food sticker`} /> : null}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>{zh ? '这一餐的贴纸' : 'A sticker from this meal'}</Text>
+                <Text style={styles.emptyLine}>{zh ? '留在日历里，也收进饮食图册。' : 'For your calendar and food album.'}</Text>
+              </View>
+            </View>
+            {Platform.OS === 'web' ? <>
+              <Text style={styles.emptyLine}>{zh ? '在设备上抠图，原照片保留。首次使用需加载工具。' : 'Cut out on this device. Your original stays. Tools load on first use.'}</Text>
+              <View style={styles.chipRow}>
+                <Pressable accessibilityRole="button" disabled={makingSticker} style={styles.navButton} onPress={() => handleSticker()}>
+                  <Text style={styles.navButtonText}>{makingSticker ? (zh ? '正在制作贴纸…' : 'Making your sticker…') : meal.stickerUri ? (zh ? '重新抠图' : 'Remake sticker') : (zh ? '制作餐食贴纸' : 'Make food sticker')}</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" disabled={makingSticker} style={styles.navButton} onPress={() => handleSticker(true)}>
+                  <Text style={styles.navButtonText}>{zh ? '导入透明 PNG' : 'Import transparent PNG'}</Text>
+                </Pressable>
+              </View>
+            </> : <Text style={styles.emptyLine}>{zh ? '在网页版 Mealog 中制作贴纸。' : 'Open Mealog on the web to make a sticker.'}</Text>}
+            {(stickerError || (stickerNotice && !meal.stickerUri)) ? <Text accessibilityLiveRegion="polite" style={{ color: '#924F3E', fontSize: 13, lineHeight: 20 }}>
+              {stickerError ?? (zh ? '餐食已保存，贴纸尚未完成，可以在这里重试。' : 'Meal saved. You can retry the sticker here.')}
+            </Text> : null}
+            <Pressable accessibilityRole="button" style={styles.albumLink} onPress={() => router.push(`/food-album?month=${meal.date.slice(0, 7)}&scope=${meal.origin === 'sample' ? 'sample' : 'personal'}`)}>
+              <Text style={styles.navButtonText}>{zh ? '打开饮食图册 →' : 'Open food album →'}</Text>
+            </Pressable>
+          </View> : null}
+
           <View style={styles.metaCluster}>
             <View style={styles.metaLine}>
               <Text style={styles.metaIcon}>◷</Text>
@@ -293,15 +350,6 @@ export default function MealDetailScreen() {
             </View>
           ) : null}
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("Memory Note")}</Text>
-            {meal.note ? (
-              <Text style={styles.noteText}>{meal.note}</Text>
-            ) : (
-              <Text style={styles.emptyLine}>
-                {t("This memory was kept without extra words.")}</Text>
-            )}
-          </View>
         </View>
 
         <View style={styles.actionArea}>
@@ -324,6 +372,9 @@ export default function MealDetailScreen() {
 // ── Styles ──────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  stickerPanel: { borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingVertical: 20, marginBottom: 24, gap: 12 },
+  stickerHeader: { flexDirection: 'row', gap: 14, alignItems: 'center' },
+  albumLink: { paddingVertical: 12, alignSelf: 'flex-start' },
   safe: {
     flex: 1,
     backgroundColor: colors.background,
@@ -340,7 +391,7 @@ const styles = StyleSheet.create({
   },
   notFoundBack: {
     marginTop: 18,
-    borderRadius: 18,
+    borderRadius: 2,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(185, 165, 138, 0.34)',
     paddingHorizontal: 18,
@@ -365,14 +416,14 @@ const styles = StyleSheet.create({
   navButton: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(92, 64, 51, 0.28)',
-    borderRadius: 18,
+    borderRadius: 2,
     paddingHorizontal: 18,
     paddingVertical: 8,
     backgroundColor: 'rgba(255, 253, 248, 0.46)',
   },
   navButtonText: {
     fontSize: 13,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
     color: colors.primary,
   },
   memoryPage: {
@@ -384,7 +435,7 @@ const styles = StyleSheet.create({
     ...shadow.soft,
   },
   photoCard: {
-    borderRadius: 24,
+    borderRadius: 2,
     overflow: 'hidden',
     backgroundColor: 'rgba(248, 232, 212, 0.34)',
     marginBottom: 24,
@@ -392,7 +443,7 @@ const styles = StyleSheet.create({
   photo: {
     width: '100%',
     aspectRatio: 0.92,
-    borderRadius: 24,
+    borderRadius: 2,
   },
   photoFallback: {
     width: '100%',
@@ -419,8 +470,8 @@ const styles = StyleSheet.create({
   },
   fallbackInitial: {
     position: 'absolute',
-    fontSize: 34,
-    fontStyle: 'italic',
+    fontSize: 26,
+    fontStyle: 'normal',
     color: 'rgba(180, 145, 88, 0.72)',
   },
   fallbackCaption: {
@@ -428,7 +479,7 @@ const styles = StyleSheet.create({
     bottom: 28,
     fontSize: 13,
     color: colors.muted,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   photoSeatStrip: {
     flexDirection: 'row',
@@ -455,19 +506,19 @@ const styles = StyleSheet.create({
   seatInitial: {
     fontSize: 12,
     color: colors.secondary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   seatLabel: {
     marginTop: 4,
     fontSize: 10,
     color: colors.mutedText,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
     maxWidth: 48,
   },
   moreSeats: {
     fontSize: 16,
     color: colors.secondary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
     marginLeft: 2,
   },
   titleBlock: {
@@ -478,10 +529,10 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginBottom: 6,
   },
-  title: {
-    fontSize: 32,
-    lineHeight: 38,
-    fontStyle: 'italic',
+  title: { fontFamily: fonts.editorial,
+    fontSize: 26,
+    lineHeight: 32,
+    fontStyle: 'normal',
     color: colors.primary,
   },
   date: {
@@ -508,17 +559,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     color: colors.mutedText,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   section: {
     marginTop: 3,
     marginBottom: 25,
   },
-  sectionTitle: {
-    fontSize: 18,
-    lineHeight: 24,
+  sectionTitle: { fontFamily: fonts.editorial,
+    fontSize: 17,
+    lineHeight: 23,
     color: colors.primary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
     marginBottom: 12,
   },
   chipRow: {
@@ -527,7 +578,7 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   chip: {
-    borderRadius: 12,
+    borderRadius: 2,
     paddingHorizontal: 14,
     paddingVertical: 8,
     backgroundColor: 'rgba(248, 232, 212, 0.5)',
@@ -535,7 +586,7 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 13,
     color: colors.mutedText,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   seatList: {
     gap: 10,
@@ -580,7 +631,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: colors.primary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   seatsEmpty: {
     borderRadius: 16,
@@ -593,7 +644,7 @@ const styles = StyleSheet.create({
   seatsEmptyTitle: {
     fontSize: 15,
     color: colors.primary,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
     marginBottom: 5,
   },
   seatsEmptyBody: {
@@ -610,7 +661,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     color: colors.muted,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
   actionArea: {
     paddingHorizontal: 20,
@@ -619,7 +670,7 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     alignSelf: 'center',
-    borderRadius: 18,
+    borderRadius: 2,
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderWidth: StyleSheet.hairlineWidth,
@@ -632,6 +683,6 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: 13,
     color: colors.destructive,
-    fontStyle: 'italic',
+    fontStyle: 'normal',
   },
 });

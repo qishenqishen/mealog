@@ -1,13 +1,15 @@
 import { useI18n, translate } from '../../src/i18n';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -26,9 +28,11 @@ import type {
   PersonProfile,
   SharedMealPhoto,
 } from '../../src/types';
-import { colors, shadow } from '../../src/theme';
-import PersonAvatar from '../../src/components/PersonAvatar';
+import { colors, shadow, fonts } from '../../src/theme';
+import FoodSticker from '../../src/components/FoodSticker';
 import LoadState from '../../src/components/LoadState';
+import MonthlyBookshelf from '../../src/components/MonthlyBookshelf';
+import { scopeMeals, type BookScope } from '../../src/utils/monthlyBooks';
 
 // ── Labels ──────────────────────────────────────────────────
 
@@ -75,7 +79,7 @@ type MonthGroup = {
   meals: MealEntry[];
 };
 
-type ArchiveView = 'calendar' | 'memories';
+type ArchiveView = 'books' | 'calendar' | 'memories';
 
 function parseDateKey(dateStr: string): { year: number; month: number; day: number } {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -217,22 +221,6 @@ function getCalendarCells(monthKey: string): Array<string | null> {
   return cells;
 }
 
-function distinctDays(meals: MealEntry[]): number {
-  return new Set(meals.map((meal) => meal.date)).size;
-}
-
-function monthWhisper(group: MonthGroup): string {
-  const photoCount = group.meals.filter((meal) => meal.photoUri).length;
-  if (photoCount >= 6) return translate('A month with photographs at the table.');
-  if (group.meals.some((meal) => meal.peopleTags.length > 0)) {
-    return translate('A table with company remembered.');
-  }
-  if (group.meals.some((meal) => meal.moodTags.length > 0 || meal.moodTag)) {
-    return translate('A month held by small feelings.');
-  }
-  return translate('Each month, a new table is set.');
-}
-
 // ── Components ──────────────────────────────────────────────
 
 function TileFallback({ meal }: { meal: MealEntry }) {
@@ -303,7 +291,7 @@ function MemoryTile({
         {meal.title}
       </Text>
       <Text style={styles.tileMeta} numberOfLines={1}>
-        {mood ?? meal.note ?? meal.time}
+        {meal.note ?? mood ?? meal.time}
       </Text>
       {sharedLine ? (
         <Text style={styles.tileShared} numberOfLines={1}>
@@ -373,54 +361,13 @@ function MonthWall({
   sharedPhotos: SharedMealPhoto[];
   onMealPress: (meal: MealEntry) => void;
 }) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const selectedDateMeals = group.meals.filter((meal) => meal.date === selectedDateKey);
   const otherMeals = group.meals.filter((meal) => meal.date !== selectedDateKey);
   const displayMeals =
     selectedDateMeals.length > 0 ? [...selectedDateMeals, ...otherMeals] : group.meals;
-  const daysWithMeals = distinctDays(group.meals);
-  const mealIds = new Set(group.meals.map((meal) => meal.id));
-  const monthCompanions = companions.filter((companion) => mealIds.has(companion.mealId));
-  const monthSharedPhotos = sharedPhotos.filter((photo) => mealIds.has(photo.mealId));
-  const sharedMealsCount = new Set(monthCompanions.map((companion) => companion.mealId)).size;
-  const uniquePeopleCount = new Set(monthCompanions.map((companion) => companion.personId)).size;
-  const photoCount = group.meals.filter((meal) => meal.photoUri).length + monthSharedPhotos.length;
-
   return (
     <View style={styles.monthWall}>
-      <View style={styles.monthPaperWash} />
-      <View style={styles.monthHeader}>
-        <View>
-          <Text style={styles.monthLabel}>{group.label}</Text>
-          <Text style={styles.monthQuote}>"{monthWhisper(group)}"</Text>
-        </View>
-        <View style={styles.monthStamp}>
-          <Text style={styles.monthStampNumber}>{group.meals.length}</Text>
-          <Text style={styles.monthStampText}>
-            {group.meals.length === 1 ? t('memory') : t('memories')}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.monthStatsLine}>
-        <Text style={styles.monthStatsText}>
-          {t('{count} meals logged', { count: group.meals.length })}</Text>
-        <View style={styles.monthStatsDot} />
-        <Text style={styles.monthStatsText}>
-          {t('{count} shared meals', { count: sharedMealsCount })}</Text>
-      </View>
-
-      <View style={styles.monthStatsLine}>
-        <Text style={styles.monthStatsText}>
-          {t(daysWithMeals === 1 ? '{count} day with meals' : '{count} days with meals', { count: daysWithMeals })}</Text>
-        <View style={styles.monthStatsDot} />
-        <Text style={styles.monthStatsText}>
-          {t('{count} people at the table', { count: uniquePeopleCount })}</Text>
-        <View style={styles.monthStatsDot} />
-        <Text style={styles.monthStatsText}>
-          {t('{count} photographs', { count: photoCount })}</Text>
-      </View>
-
       {displayMeals.length > 0 ? (
         <MemoryCollage
           meals={displayMeals}
@@ -449,19 +396,20 @@ function ViewToggle({
 }) {
   const { t, locale } = useI18n();
   return (
-    <View style={styles.viewToggle}>
-      {(['calendar', 'memories'] as const).map((view) => {
+    <View style={styles.viewToggle} accessibilityRole="tablist">
+      {(['books', 'calendar', 'memories'] as const).map((view) => {
         const active = activeView === view;
         return (
           <Pressable
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
+            aria-selected={active}
             key={view}
             style={[styles.viewToggleItem, active && styles.viewToggleItemActive]}
             onPress={() => onChange(view)}
           >
             <Text style={[styles.viewToggleText, active && styles.viewToggleTextActive]}>
-              {view === 'calendar' ? t('Calendar') : t('Memories')}
+              {view === 'books' ? (locale === 'zh' ? '月度相册' : 'Photobooks') : view === 'calendar' ? t('Calendar') : (locale === 'zh' ? '照片' : 'Photos')}
             </Text>
           </Pressable>
         );
@@ -470,42 +418,18 @@ function ViewToggle({
   );
 }
 
-function CalendarStatusDot({
-  label,
-  active,
-}: {
-  label: string;
-  active: boolean;
-}) {
-  return (
-    <View style={[styles.calendarStatusDot, active && styles.calendarStatusDotActive]}>
-      <Text style={[styles.calendarStatusText, active && styles.calendarStatusTextActive]}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
 function MonthCalendar({
   group,
   selectedDateKey,
-  companions,
-  peopleById,
-  sharedPhotos,
   onDayPress,
 }: {
   group: MonthGroup;
   selectedDateKey: string;
-  companions: MealCompanion[];
-  peopleById: Map<string, PersonProfile>;
-  sharedPhotos: SharedMealPhoto[];
   onDayPress: (dateKey: string, meals: MealEntry[]) => void;
 }) {
   const { t, locale } = useI18n();
-  const cells = getCalendarCells(group.key);
   const todayKey = toDateKey(new Date());
   const mealsByDate = new Map<string, MealEntry[]>();
-
   for (const meal of group.meals) {
     const dateMeals = mealsByDate.get(meal.date) ?? [];
     dateMeals.push(meal);
@@ -514,131 +438,49 @@ function MonthCalendar({
 
   return (
     <View style={styles.calendarPaper}>
-      <View style={styles.calendarHeader}>
-        <View>
-          <Text style={styles.calendarEyebrow}>{t("Month table")}</Text>
-          <Text style={styles.calendarTitle}>{group.label}</Text>
-        </View>
-        <Text style={styles.calendarHint}>{t("Tap a day to open its table")}</Text>
-      </View>
-
-      <View style={styles.calendarLegend}>
-        {[t('Meal'), t('People'), t('Photo')].map((label) => (
-          <View key={label} style={styles.calendarLegendItem}>
-            <View style={styles.calendarLegendMark} />
-            <Text style={styles.calendarLegendText}>{label}</Text>
-          </View>
-        ))}
-      </View>
-
       <View style={styles.weekdayRow}>
         {WEEKDAY_LABELS.map((weekday) => (
-          <Text key={weekday} style={styles.weekdayText}>
-            {t(weekday)}
-          </Text>
+          <Text key={weekday} style={styles.weekdayText}>{t(weekday)}</Text>
         ))}
       </View>
-
       <View style={styles.calendarGrid}>
-        {cells.map((dateKey, index) => {
-          if (!dateKey) {
-            return <View key={`blank-${index}`} style={styles.calendarBlankCell} />;
-          }
-
-          const { day } = parseDateKey(dateKey);
+        {getCalendarCells(group.key).map((dateKey, index) => {
+          if (!dateKey) return <View key={`blank-${index}`} style={styles.calendarBlankCell} />;
           const dateMeals = mealsByDate.get(dateKey) ?? [];
-          const dateMealIds = new Set(dateMeals.map((meal) => meal.id));
-          const dateCompanions = companions.filter((companion) => dateMealIds.has(companion.mealId));
-          const datePeople = [...new Set(dateCompanions.map((companion) => companion.personId))]
-            .map((personId) => peopleById.get(personId))
-            .filter((person): person is PersonProfile => Boolean(person));
-          const primaryMealPhoto = dateMeals.find((meal) => meal.photoThumbnailUri || meal.photoUri);
-          const primarySharedPhoto = sharedPhotos.find((photo) => (
-            dateMealIds.has(photo.mealId) && (photo.thumbnailUri || photo.imageUrl)
-          ));
-          const primaryPhotoUri = primaryMealPhoto?.photoThumbnailUri
-            ?? primaryMealPhoto?.photoUri
-            ?? primarySharedPhoto?.thumbnailUri
-            ?? primarySharedPhoto?.imageUrl;
-          const firstMealType = dateMeals[0]?.mealType;
-          const hasMeals = dateMeals.length > 0;
-          const hasPeople = datePeople.length > 0 || dateMeals.some((meal) => meal.peopleTags.length > 0);
-          const hasPhoto = Boolean(primaryPhotoUri);
+          const sticker = dateMeals.find((meal) => meal.stickerUri);
           const isToday = dateKey === todayKey;
           const isSelected = dateKey === selectedDateKey;
-
           return (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${new Date(`${dateKey}T12:00:00`).toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-US', { month: 'long', day: 'numeric', year: 'numeric' })}, ${t('{count} meals', { count: dateMeals.length })}`}
               accessibilityState={{ selected: isSelected }}
+              testID={`calendar-day-${dateKey}`}
               key={dateKey}
               style={({ pressed }) => [
                 styles.calendarDayCell,
-                hasMeals && styles.calendarDayWithMeal,
                 isToday && styles.calendarDayToday,
                 isSelected && styles.calendarDaySelected,
                 pressed && styles.calendarDayPressed,
               ]}
               onPress={() => onDayPress(dateKey, dateMeals)}
             >
-              <View style={styles.calendarDayTop}>
-                <Text
-                  style={[
-                    styles.calendarDayNumber,
-                    hasMeals && styles.calendarDayNumberActive,
-                    isSelected && styles.calendarDayNumberSelected,
-                  ]}
-                >
-                  {day}
-                </Text>
-                {isToday ? <View style={styles.todayPin} /> : null}
-              </View>
-              <View style={styles.calendarDayVisual}>
-                {primaryPhotoUri ? (
-                  <Image source={{ uri: primaryPhotoUri }} style={styles.calendarDayImage} />
-                ) : hasMeals && firstMealType ? (
-                  <View style={styles.calendarMealFallback}>
-                    <Text style={styles.calendarMealFallbackText}>
-                      {t(MEAL_TYPE_INITIALS[firstMealType])}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              <View style={styles.calendarStatuses}>
-                {datePeople.length > 0 ? (
-                  <View style={styles.calendarAvatarRow}>
-                    {datePeople.slice(0, 2).map((person, avatarIndex) => (
-                      <View
-                        key={person.id}
-                        style={[
-                          styles.calendarAvatarWrap,
-                          avatarIndex > 0 && styles.calendarAvatarOverlap,
-                        ]}
-                      >
-                        <PersonAvatar person={person} size={16} />
-                      </View>
-                    ))}
-                    {datePeople.length > 2 ? (
-                      <View style={styles.calendarAvatarMore}>
-                        <Text style={styles.calendarAvatarMoreText}>+{datePeople.length - 2}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : hasPeople ? (
-                  <CalendarStatusDot label={t("Pe")} active={true} />
-                ) : null}
-                {hasMeals || hasPhoto ? (
-                  <View style={styles.calendarMiniMarks}>
-                    {hasMeals ? <CalendarStatusDot label={t("M")} active={true} /> : null}
-                    {hasPhoto ? <CalendarStatusDot label={t("Ph")} active={true} /> : null}
-                  </View>
-                ) : null}
-              </View>
+              {sticker?.stickerUri ? (
+                <View style={styles.calendarSticker}>
+                  <FoodSticker uri={sticker.stickerUri} style={[styles.calendarStickerImage, { transform: [{ rotate: `${[-8, 5, -3, 7][index % 4]}deg` }] }]} accessibilityLabel={sticker.title} />
+                </View>
+              ) : null}
+              <Text style={[styles.calendarDayNumber, sticker && styles.calendarStickerDate, isToday && styles.calendarDayNumberSelected]}>
+                {parseDateKey(dateKey).day}
+              </Text>
+              {dateMeals.length > 1 ? (
+                <View style={styles.calendarCount}><Text style={styles.calendarCountText}>{dateMeals.length}</Text></View>
+              ) : dateMeals.length === 1 && !sticker ? <View style={styles.mealDot} /> : null}
             </Pressable>
           );
         })}
       </View>
+      <Text style={styles.calendarHint}>{t('Tap a day to open its table')}</Text>
     </View>
   );
 }
@@ -648,15 +490,21 @@ function MonthCalendar({
 export default function ArchiveScreen() {
   const { t, locale } = useI18n();
   const router = useRouter();
+  const { height: screenHeight } = useWindowDimensions();
+  const compact = screenHeight < 700;
   const initialDateKey = toDateKey(new Date());
   const initialMonthKey = toMonthKey(new Date());
   const [allMeals, setAllMeals] = useState<MealEntry[]>([]);
+  const [scope, setScope] = useState<BookScope>();
+  const activeScope = scope ?? 'personal';
+  const [lastBook, setLastBook] = useState<string>();
+  const [shelfYear, setShelfYear] = useState(new Date().getFullYear());
   const [companions, setCompanions] = useState<MealCompanion[]>([]);
   const [people, setPeople] = useState<PersonProfile[]>([]);
   const [sharedPhotos, setSharedPhotos] = useState<SharedMealPhoto[]>([]);
   const [selectedMonthKey, setSelectedMonthKey] = useState(initialMonthKey);
   const [selectedDateKey, setSelectedDateKey] = useState(initialDateKey);
-  const [activeView, setActiveView] = useState<ArchiveView>('calendar');
+  const [activeView, setActiveView] = useState<ArchiveView>('books');
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [daySheetDateKey, setDaySheetDateKey] = useState<string | undefined>();
   const [daySheetMeals, setDaySheetMeals] = useState<MealEntry[]>([]);
@@ -677,6 +525,7 @@ export default function ArchiveScreen() {
       ]).then(([all, nextCompanions, nextPeople, nextPhotos]) => {
         if (!active) return;
         setAllMeals(all);
+        setScope(previous => previous ?? (all.some(meal => meal.origin !== 'sample') ? 'personal' : 'sample'));
         setCompanions(nextCompanions);
         setPeople(nextPeople);
         setSharedPhotos(nextPhotos);
@@ -691,6 +540,12 @@ export default function ArchiveScreen() {
     }, [reloadToken]),
   );
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || loading || activeView !== 'books' || !lastBook) return;
+    const frame = requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-testid="monthly-book-${lastBook}"]`)?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [loading, activeView, lastBook]);
+
   const handleMealPress = useCallback(
     (meal: MealEntry) => {
       router.push(`/meal/${meal.id}`);
@@ -698,10 +553,11 @@ export default function ArchiveScreen() {
     [router],
   );
 
-  const monthGroups = useMemo(() => groupMealsByMonth(allMeals), [allMeals, locale]);
+  const scopedMeals = useMemo(() => scopeMeals(allMeals, activeScope), [allMeals, activeScope]);
+  const monthGroups = useMemo(() => groupMealsByMonth(scopedMeals), [scopedMeals, locale]);
   const selectedMonth = useMemo(
-    () => buildMonthGroup(selectedMonthKey, allMeals),
-    [allMeals, selectedMonthKey, locale],
+    () => buildMonthGroup(selectedMonthKey, scopedMeals),
+    [scopedMeals, selectedMonthKey, locale],
   );
   const monthOptions = useMemo(
     () => mergeMonthOptions(monthGroups, selectedMonthKey, initialMonthKey),
@@ -731,21 +587,21 @@ export default function ArchiveScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, compact && { paddingTop: 4 }, activeView !== 'books' && { maxWidth: 550, width: '100%', alignSelf: 'center' }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={styles.kicker}>{t("Mealog archive")}</Text>
-          <Text style={styles.title}>{t("Month memories")}</Text>
-          <Text style={styles.subtitle}>
-            {t("A wall of tables, photographs, and small things that stayed.")}</Text>
-          <Pressable accessibilityRole="button" style={styles.peopleLibraryLink} onPress={() => router.push('/people')}>
-            <Text style={styles.peopleLibraryLinkText}>{t("People at my table")}</Text>
+        <View style={[styles.header, compact && { marginBottom: 6 }]}>
+          {!compact ? <Text style={styles.eyebrow}>MEALOG / LIBRARY</Text> : null}
+          <Text accessibilityRole="header" style={[styles.title, compact && { fontSize: 20, lineHeight: 30 }]}>{locale === 'zh' ? '把日子，翻成一册。' : 'Life, bound in little books.'}</Text>
+          {activeView !== 'books' ? <Text style={styles.intro}>{locale === 'zh' ? '一月一册，收藏那些吃过、记得的日常。' : 'A book for each month. The meals you want to remember.'}</Text> : null}
+          <Pressable accessibilityRole="button" style={[styles.peopleLibraryLink, compact && { top: -6 }]} onPress={() => router.push('/people')}>
+            <Text style={styles.peopleLibraryLinkText}>{locale === 'zh' ? '同桌伙伴 ↗' : 'People ↗'}</Text>
           </Pressable>
         </View>
 
-        <Pressable
+        {activeView !== 'books' ? <Pressable
           accessibilityRole="button"
+          accessibilityLabel={t('Choose a month')}
           style={({ pressed }) => [
             styles.monthSwitch,
             pressed && styles.monthSwitchPressed,
@@ -753,24 +609,35 @@ export default function ArchiveScreen() {
           onPress={() => setMonthPickerOpen(true)}
         >
           <View>
-            <Text style={styles.monthSwitchLabel}>{t("Current table")}</Text>
             <Text style={styles.monthSwitchMonth}>{selectedMonth.label}</Text>
           </View>
           <Text style={styles.monthSwitchChevron}>⌄</Text>
-        </Pressable>
+        </Pressable> : null}
 
         <LoadState loading={loading} error={error} onRetry={() => setReloadToken((value) => value + 1)} />
         <ViewToggle activeView={activeView} onChange={setActiveView} />
+        <View style={styles.scopeRow} accessibilityRole="tablist">
+          {(['personal', 'sample'] as const).map(value => <Pressable key={value} accessibilityRole="tab"
+            accessibilityState={{ selected: activeScope === value }} aria-selected={activeScope === value} style={[styles.scopeButton, activeScope === value && styles.scopeActive]}
+            onPress={() => setScope(value)}><Text style={styles.scopeText}>{value === 'personal' ? (locale === 'zh' ? '我的相册' : 'My books') : (locale === 'zh' ? '示例相册' : 'Sample books')}</Text></Pressable>)}
+        </View>
+        {activeScope === 'sample' && !compact ? <Text style={styles.sampleNote}>{locale === 'zh' ? '示例相册，与你的餐食分开保存。' : 'Sample books, separate from your meals.'}</Text> : null}
 
-        {loading || error ? null : activeView === 'calendar' ? (
+        {loading || error ? null : activeView === 'books' ? (
+          <MonthlyBookshelf meals={scopedMeals} locale={locale} year={shelfYear} onYearChange={setShelfYear}
+            onOpen={month => { setLastBook(month); router.push(`/photobook?month=${month}&scope=${activeScope}`); }} onAdd={() => router.push('/add')} />
+        ) : activeView === 'calendar' ? (
+          <>
           <MonthCalendar
             group={selectedMonth}
             selectedDateKey={selectedDateKey}
-            companions={companions}
-            peopleById={peopleById}
-            sharedPhotos={sharedPhotos}
             onDayPress={handleCalendarDayPress}
           />
+          {selectedMonth.meals.some(meal => meal.photoUri && !meal.stickerUri) ? <Pressable accessibilityRole="button"
+            style={styles.stickerPrompt} onPress={() => router.push(`/food-album?month=${selectedMonth.key}&scope=${activeScope}`)}>
+            <Text style={styles.stickerPromptText}>{locale === 'zh' ? '把照片变成可爱贴纸 ↗' : 'Turn your photos into little stickers ↗'}</Text>
+          </Pressable> : null}
+          </>
         ) : (
           <>
             <MonthWall
@@ -783,6 +650,26 @@ export default function ArchiveScreen() {
             />
           </>
         )}
+        {!loading && !error ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={locale === 'zh' ? '打开饮食图册' : 'Open food album'}
+            style={styles.albumLink} onPress={() => router.push(`/food-album?month=${selectedMonth.key}&scope=${activeScope}`)}>
+            <View style={styles.albumLinkHeading}>
+              <Text style={styles.albumLinkTitle}>{locale === 'zh' ? '食物 Archive' : 'Food archive'}</Text>
+              <Text style={styles.albumLinkArrow}>↗</Text>
+            </View>
+            <Text style={styles.albumLinkCaption}>{selectedMonth.meals.some((meal) => meal.photoUri && !meal.stickerUri)
+              ? (locale === 'zh' ? '收好餐食贴纸，也可以为已有照片制作贴纸。' : 'Collect your stickers and make more from saved photos.')
+              : (locale === 'zh' ? '把吃过的好味道，一张张贴在这里。' : 'A little collection of things you have tasted.')}</Text>
+            {selectedMonth.meals.some((meal) => meal.stickerUri) ? (
+              <View style={styles.albumPreview}>
+                {selectedMonth.meals.filter((meal) => meal.stickerUri).slice(0, 5).map((meal, index) => (
+                  <FoodSticker key={meal.id} uri={meal.stickerUri!} size={58}
+                    style={{ width: '20%', transform: [{ rotate: `${[-9, 6, -3, 9, -6][index]}deg` }] }} />
+                ))}
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
       </ScrollView>
 
       <Modal
@@ -877,6 +764,7 @@ export default function ArchiveScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
+            aria-selected={active}
                   key={group.key}
                   style={[styles.pickerMonth, active && styles.pickerMonthActive]}
                   onPress={() => handleMonthSelect(group)}
@@ -908,51 +796,50 @@ export default function ArchiveScreen() {
 // ── Styles ──────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  eyebrow: { fontSize: 9, letterSpacing: 1.4, color: '#737361', marginTop: 4, marginBottom: 12 },
+  intro: { fontSize: 12, lineHeight: 20, color: '#736e61', marginTop: 6 },
+  scopeRow: { flexDirection: 'row', gap: 22, marginBottom: 0 },
+  scopeButton: { minHeight: 44, justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: 'transparent' },
+  scopeActive: { borderBottomColor: '#59624c' },
+  scopeText: { color: '#545b49', fontSize: 13 },
+  sampleNote: { color: '#736e61', fontSize: 11, lineHeight: 18, marginBottom: 8 },
   safe: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#f8f6ef',
   },
   scroll: {
     paddingHorizontal: 22,
     paddingTop: 18,
-    paddingBottom: 118,
+    paddingBottom: 38,
+    maxWidth: 980,
+    width: '100%',
+    alignSelf: 'center',
   },
   header: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
-  kicker: {
-    fontSize: 12,
-    color: colors.muted,
-    marginBottom: 7,
-  },
-  title: {
-    fontSize: 33,
-    lineHeight: 39,
-    fontStyle: 'italic',
+  title: { fontFamily: fonts.editorial,
+    fontSize: 21,
+    lineHeight: 29,
     color: colors.primary,
-  },
-  subtitle: {
-    marginTop: 8,
-    maxWidth: 310,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.mutedText,
   },
   peopleLibraryLink: {
     alignSelf: 'flex-start',
     borderRadius: 17,
     paddingHorizontal: 13,
     paddingVertical: 8,
-    marginTop: 14,
-    backgroundColor: 'rgba(248, 232, 212, 0.36)',
+    marginTop: 0,
+    position: 'absolute',
+    top: -3,
+    right: 0,
+    backgroundColor: 'transparent',
   },
   peopleLibraryLinkText: {
     fontSize: 12,
     color: colors.secondary,
-    fontStyle: 'italic',
   },
   monthSwitch: {
-    borderRadius: 24,
+    borderRadius: 2,
     paddingHorizontal: 18,
     paddingVertical: 14,
     marginBottom: 18,
@@ -966,35 +853,29 @@ const styles = StyleSheet.create({
   monthSwitchPressed: {
     opacity: 0.76,
   },
-  monthSwitchLabel: {
-    fontSize: 11,
-    color: colors.muted,
-    marginBottom: 4,
-  },
   monthSwitchMonth: {
-    fontSize: 21,
-    lineHeight: 26,
-    fontStyle: 'italic',
+    fontSize: 18,
+    lineHeight: 24,
     color: colors.primary,
   },
   monthSwitchChevron: {
-    fontSize: 24,
-    color: colors.muted,
+    fontSize: 21,
+    color: colors.mutedText,
     marginRight: 2,
   },
   viewToggle: {
     flexDirection: 'row',
-    borderRadius: 22,
+    borderRadius: 2,
     padding: 4,
-    marginBottom: 18,
+    marginBottom: 0,
     backgroundColor: 'rgba(255, 253, 248, 0.5)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(185, 165, 138, 0.24)',
   },
   viewToggleItem: {
     flex: 1,
-    minHeight: 38,
-    borderRadius: 18,
+    minHeight: 44,
+    borderRadius: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1003,221 +884,156 @@ const styles = StyleSheet.create({
   },
   viewToggleText: {
     fontSize: 14,
-    fontStyle: 'italic',
     color: colors.mutedText,
   },
   viewToggleTextActive: {
     color: colors.primary,
   },
   calendarPaper: {
-    borderRadius: 28,
-    backgroundColor: 'rgba(255, 253, 248, 0.78)',
-    paddingHorizontal: 15,
+    borderRadius: 2,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 9,
     paddingTop: 20,
-    paddingBottom: 22,
-    marginBottom: 24,
-    ...shadow.soft,
-  },
-  calendarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 14,
-    marginBottom: 18,
-  },
-  calendarEyebrow: {
-    fontSize: 11,
-    color: colors.muted,
-    marginBottom: 5,
-  },
-  calendarTitle: {
-    fontSize: 26,
-    lineHeight: 31,
-    color: colors.primary,
-    fontStyle: 'italic',
+    paddingBottom: 16,
+    marginBottom: 16,
   },
   calendarHint: {
-    flex: 1,
-    alignSelf: 'flex-end',
-    textAlign: 'right',
+    marginTop: 8,
+    textAlign: 'center',
     fontSize: 11,
-    lineHeight: 16,
-    color: colors.muted,
-  },
-  calendarLegend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 13,
-  },
-  calendarLegendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    backgroundColor: 'rgba(248, 232, 212, 0.3)',
-  },
-  calendarLegendMark: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(92, 64, 51, 0.68)',
-  },
-  calendarLegendText: {
-    fontSize: 10,
     color: colors.mutedText,
-    fontStyle: 'italic',
   },
   weekdayRow: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: 14,
   },
   weekdayText: {
     width: `${100 / 7}%`,
     textAlign: 'center',
-    fontSize: 10,
-    color: colors.muted,
-    fontStyle: 'italic',
+    fontSize: 11,
+    color: colors.mutedText,
   },
   calendarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(185, 165, 138, 0.18)',
-    overflow: 'hidden',
-    borderRadius: 16,
   },
   calendarBlankCell: {
-    width: `${100 / 7}%`,
-    minHeight: 92,
-    backgroundColor: 'rgba(255, 248, 238, 0.28)',
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(185, 165, 138, 0.14)',
+    width: `${100 / 7 - 1.5}%`,
+    marginHorizontal: '0.75%',
+    minHeight: 66,
+    marginBottom: 8,
   },
   calendarDayCell: {
-    width: `${100 / 7}%`,
-    minHeight: 92,
-    paddingHorizontal: 4,
-    paddingTop: 7,
-    paddingBottom: 5,
-    backgroundColor: 'rgba(255, 253, 248, 0.5)',
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(185, 165, 138, 0.18)',
-  },
-  calendarDayWithMeal: {
-    backgroundColor: 'rgba(248, 232, 212, 0.35)',
+    width: `${100 / 7 - 1.5}%`,
+    marginHorizontal: '0.75%',
+    minHeight: 66,
+    marginBottom: 8,
+    borderRadius: 13,
+    backgroundColor: '#F1EFE8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   calendarDayToday: {
-    backgroundColor: 'rgba(255, 241, 225, 0.62)',
+    borderColor: colors.secondary,
   },
   calendarDaySelected: {
-    backgroundColor: 'rgba(180, 145, 88, 0.18)',
+    backgroundColor: '#E9DFCF',
+    borderColor: colors.secondary,
   },
   calendarDayPressed: {
-    opacity: 0.76,
-  },
-  calendarDayTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
+    opacity: 0.72,
   },
   calendarDayNumber: {
-    fontSize: 13,
-    color: colors.mutedText,
-    fontStyle: 'italic',
-  },
-  calendarDayNumberActive: {
+    fontSize: 15,
     color: colors.primary,
   },
+  calendarStickerDate: {
+    position: 'absolute',
+    top: 3,
+    left: 5,
+    fontSize: 10,
+    lineHeight: 12,
+  },
   calendarDayNumberSelected: {
-    color: '#8E6D35',
+    fontWeight: '700',
   },
-  calendarDayVisual: {
-    height: 30,
-    borderRadius: 10,
-    overflow: 'hidden',
-    marginBottom: 5,
-    backgroundColor: 'rgba(255, 248, 238, 0.42)',
+  calendarSticker: {
+    position: 'absolute',
+    top: 15,
+    bottom: 2,
+    left: 1,
+    right: 1,
   },
-  calendarDayImage: {
+  calendarStickerImage: {
     width: '100%',
     height: '100%',
   },
-  calendarMealFallback: {
-    flex: 1,
+  stickerPrompt: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  stickerPromptText: {
+    color: colors.primary,
+    fontSize: 12,
+  },
+  calendarCount: {
+    position: 'absolute',
+    right: -2,
+    top: -4,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: colors.secondary,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(180, 145, 88, 0.12)',
   },
-  calendarMealFallbackText: {
-    fontSize: 11,
-    color: colors.secondary,
-    fontStyle: 'italic',
+  calendarCountText: {
+    fontSize: 10,
+    color: colors.surface,
   },
-  todayPin: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
+  mealDot: {
+    position: 'absolute',
+    bottom: 10,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: colors.secondary,
   },
-  calendarStatuses: {
-    gap: 3,
+  albumLink: {
+    borderRadius: 2,
+    backgroundColor: colors.surface,
+    padding: 20,
+    marginBottom: 18,
   },
-  calendarMiniMarks: {
-    flexDirection: 'row',
-    gap: 3,
-  },
-  calendarStatusDot: {
-    flex: 1,
-    height: 13,
-    borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(185, 165, 138, 0.12)',
-  },
-  calendarStatusDotActive: {
-    backgroundColor: 'rgba(92, 64, 51, 0.72)',
-  },
-  calendarStatusText: {
-    fontSize: 7,
-    color: 'rgba(141, 123, 102, 0.58)',
-  },
-  calendarStatusTextActive: {
-    color: colors.background,
-  },
-  calendarAvatarRow: {
-    height: 17,
+  albumLinkHeading: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  albumLinkTitle: {
+    fontSize: 18,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  albumLinkArrow: {
+    fontSize: 22,
+    color: colors.secondary,
+  },
+  albumLinkCaption: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 19,
+    color: colors.mutedText,
+  },
+  albumPreview: {
+    flexDirection: 'row',
     justifyContent: 'center',
-  },
-  calendarAvatarWrap: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 253, 248, 0.9)',
-  },
-  calendarAvatarOverlap: {
-    marginLeft: -5,
-  },
-  calendarAvatarMore: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -5,
-    backgroundColor: 'rgba(92, 64, 51, 0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 253, 248, 0.9)',
-  },
-  calendarAvatarMoreText: {
-    fontSize: 7,
-    color: colors.background,
+    paddingTop: 16,
   },
   monthWall: {
     position: 'relative',
@@ -1230,68 +1046,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     ...shadow.soft,
   },
-  monthPaperWash: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-    bottom: 16,
-    height: 150,
-    borderRadius: 80,
-    backgroundColor: 'rgba(248, 232, 212, 0.2)',
-  },
-  monthHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 14,
-    marginBottom: 13,
-  },
-  monthLabel: {
-    fontSize: 30,
-    lineHeight: 36,
-    fontStyle: 'italic',
-    color: colors.primary,
-  },
-  monthQuote: {
-    marginTop: 5,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.mutedText,
-  },
-  monthStamp: {
-    minWidth: 58,
-    borderRadius: 18,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    alignItems: 'center',
-    backgroundColor: 'rgba(248, 232, 212, 0.5)',
-  },
-  monthStampNumber: {
-    fontSize: 20,
-    lineHeight: 23,
-    color: colors.secondary,
-    fontStyle: 'italic',
-  },
-  monthStampText: {
-    fontSize: 10,
-    color: colors.mutedText,
-  },
-  monthStatsLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  monthStatsText: {
-    fontSize: 12,
-    color: colors.muted,
-  },
-  monthStatsDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: colors.muted,
-    marginHorizontal: 8,
-  },
   monthEmptyPanel: {
     borderRadius: 20,
     paddingHorizontal: 18,
@@ -1302,10 +1056,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(185, 165, 138, 0.28)',
   },
   monthEmptyTitle: {
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 16,
+    lineHeight: 22,
     color: colors.primary,
-    fontStyle: 'italic',
     marginBottom: 7,
   },
   monthEmptyBody: {
@@ -1339,13 +1092,13 @@ const styles = StyleSheet.create({
     position: 'relative',
     width: '100%',
     aspectRatio: 1,
-    borderRadius: 12,
+    borderRadius: 2,
     overflow: 'hidden',
     backgroundColor: 'rgba(248, 232, 212, 0.34)',
   },
   tileImageFeature: {
     aspectRatio: 1.34,
-    borderRadius: 18,
+    borderRadius: 2,
   },
   tileImageWide: {
     aspectRatio: 1.9,
@@ -1369,8 +1122,7 @@ const styles = StyleSheet.create({
   },
   fallbackInitial: {
     position: 'absolute',
-    fontSize: 20,
-    fontStyle: 'italic',
+    fontSize: 18,
     color: 'rgba(180, 145, 88, 0.72)',
   },
   dayBadge: {
@@ -1387,50 +1139,23 @@ const styles = StyleSheet.create({
   dayBadgeText: {
     fontSize: 11,
     color: colors.secondary,
-    fontStyle: 'italic',
   },
   tileTitle: {
     marginTop: 7,
     fontSize: 12,
     lineHeight: 16,
     color: colors.primary,
-    fontStyle: 'italic',
   },
   tileMeta: {
     fontSize: 10,
     lineHeight: 14,
-    color: colors.muted,
+    color: colors.mutedText,
   },
   tileShared: {
     marginTop: 1,
     fontSize: 10,
     lineHeight: 14,
     color: colors.secondary,
-    fontStyle: 'italic',
-  },
-  emptyWall: {
-    paddingTop: 22,
-  },
-  emptyPaper: {
-    borderRadius: 26,
-    paddingHorizontal: 22,
-    paddingVertical: 28,
-    backgroundColor: 'rgba(255, 253, 248, 0.62)',
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(185, 165, 138, 0.32)',
-  },
-  emptyTitle: {
-    fontSize: 22,
-    lineHeight: 29,
-    fontStyle: 'italic',
-    color: colors.primary,
-    marginBottom: 8,
-  },
-  emptyBody: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.mutedText,
   },
   daySheet: {
     width: '100%',
@@ -1448,14 +1173,13 @@ const styles = StyleSheet.create({
     marginTop: -7,
     marginBottom: 14,
     fontSize: 12,
-    color: colors.muted,
-    fontStyle: 'italic',
+    color: colors.mutedText,
   },
   dayMealRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderRadius: 18,
+    borderRadius: 2,
     paddingHorizontal: 10,
     paddingVertical: 10,
     marginBottom: 9,
@@ -1480,7 +1204,6 @@ const styles = StyleSheet.create({
   dayMealTitle: {
     fontSize: 15,
     color: colors.primary,
-    fontStyle: 'italic',
     marginBottom: 4,
   },
   dayMealMeta: {
@@ -1490,11 +1213,11 @@ const styles = StyleSheet.create({
   },
   dayMealShared: {
     fontSize: 11,
-    color: colors.muted,
+    color: colors.mutedText,
   },
   dayMealChevron: {
-    fontSize: 22,
-    color: colors.muted,
+    fontSize: 18,
+    color: colors.mutedText,
   },
   pickerOverlay: {
     flex: 1,
@@ -1514,15 +1237,14 @@ const styles = StyleSheet.create({
     ...shadow.card,
   },
   pickerTitle: {
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 18,
+    lineHeight: 24,
     color: colors.primary,
-    fontStyle: 'italic',
     marginBottom: 12,
     paddingHorizontal: 4,
   },
   pickerMonth: {
-    borderRadius: 18,
+    borderRadius: 2,
     paddingHorizontal: 14,
     paddingVertical: 12,
     flexDirection: 'row',
@@ -1537,7 +1259,6 @@ const styles = StyleSheet.create({
   pickerMonthLabel: {
     fontSize: 16,
     color: colors.primary,
-    fontStyle: 'italic',
   },
   pickerMonthLabelActive: {
     color: '#8E6D35',
@@ -1545,7 +1266,7 @@ const styles = StyleSheet.create({
   pickerMonthMeta: {
     marginTop: 3,
     fontSize: 11,
-    color: colors.muted,
+    color: colors.mutedText,
   },
   pickerActiveMark: {
     fontSize: 24,

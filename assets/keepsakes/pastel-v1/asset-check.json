@@ -1,0 +1,12 @@
+{
+  "assets": 57,
+  "unique_images": 57,
+  "size_px": 384,
+  "alpha": "All files contain fully transparent and visible pixels",
+  "total_bytes": 6776267,
+  "total_MB": 6.46,
+  "mapping": "All 57 original keys replaced, no original asset paths remain",
+  "generator": "Built-in image_gen, one object per PNG",
+  "prompt_records": 59,
+  "verification": "npm test, npm run build, final Expo web export; browser checked shelf, progress details, secret placeholders and visible image loads"
+}

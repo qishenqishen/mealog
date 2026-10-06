@@ -5,13 +5,13 @@
     "version": "1.0.0",
     "scheme": "mealogue",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/brand/mealog-app-icon-v1.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/brand/mealog-app-icon-v1.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFF8F0"
+      "backgroundColor": "#F7F3E7"
     },
     "ios": {
       "supportsTablet": true,
@@ -25,8 +25,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FFF8F0"
+        "foregroundImage": "./assets/brand/mealog-app-icon-v1.png",
+        "backgroundColor": "#F7F3E7"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -34,7 +34,7 @@
       "versionCode": 1
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/brand/mealog-app-icon-v1.png"
     },
     "plugins": [
       "expo-router",

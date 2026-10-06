@@ -29,17 +29,17 @@ try {
   assert(initial.every((meal) => Date.parse(meal.eatenAt) <= Date.parse((new Date()).toISOString())));
   console.log('PASS new visitor: 19 last-month meals; new food photos use managed originals and thumbnails');
 
-  await page.getByText('Month table', { exact: true }).evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await page.getByRole('button', { name: 'Choose a month', exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${output}/calendar-current-mobile.png` });
   const previousLabel = new Date(previous[0].date + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  await page.getByRole('button', { name: /Current table/ }).click();
+  await page.getByRole('button', { name: 'Choose a month', exact: true }).click();
   await page.getByRole('button', { name: new RegExp(previousLabel + '.*19 memories') }).click();
   await page.getByText('Choose a month', { exact: true }).waitFor({ state: 'hidden' });
   await readable();
   assert.equal(await page.getByRole('button', { name: /, [1-9]\d* meals$/ }).count(), new Set(previous.map((meal) => meal.date)).size);
   for (const [name, width, height] of [['mobile', 390, 844], ['desktop', 1440, 1000]]) {
     await page.setViewportSize({ width, height });
-    await page.getByText('Month table', { exact: true }).evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    await page.getByRole('button', { name: 'Choose a month', exact: true }).scrollIntoViewIfNeeded();
     await readable();
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.screenshot({ path: `${output}/calendar-previous-${name}.png` });
@@ -52,6 +52,48 @@ try {
   await page.reload(); await page.getByText(dessert.title, { exact: true }).waitFor(); await readable();
   await page.screenshot({ path: `${output}/uploaded-dessert-detail.png` });
   console.log('PASS Calendar day opens the fourth uploaded photo; detail survives refresh; mobile/desktop render');
+
+  const toast = initial.find((meal) => meal.id === 'demo-meal-current-01');
+  assert(toast && toast.origin === 'sample' && !toast.stickerMediaId);
+  await page.goto(`${base}/meal/${toast.id}`);
+  await page.getByRole('button', { name: 'Make food sticker', exact: true }).click();
+  await page.getByRole('button', { name: 'Remake sticker', exact: true }).waitFor({ timeout: 180000 });
+  await readable();
+  const withSticker = (await read('meals')).find((meal) => meal.id === toast.id);
+  assert(withSticker.stickerMediaId && withSticker.stickerUri.startsWith('indexeddb://'));
+  assert.notEqual(withSticker.stickerMediaId, toast.photoMediaId);
+  const { stickerMediaId, stickerUri, ...originalFields } = withSticker;
+  assert.deepEqual(originalFields, toast);
+  const alpha = await page.getByRole('img', { name: `${toast.title} food sticker`, exact: true }).locator('img').evaluate((image) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(image, 0, 0);
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    let transparent = 0, opaque = 0;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] < 20) transparent++;
+      if (data[i] > 240) opaque++;
+    }
+    return { transparent, opaque, pixels: canvas.width * canvas.height };
+  });
+  assert(alpha.transparent / alpha.pixels > 0.01 && alpha.opaque > 0, 'Sticker must contain a visible cutout and transparent background');
+  await page.reload();
+  await page.getByRole('button', { name: 'Remake sticker', exact: true }).waitFor();
+  await readable();
+  assert.deepEqual((await read('meals')).find((meal) => meal.id === toast.id), withSticker);
+  await page.getByRole('button', { name: 'Open food album →', exact: true }).click();
+  await page.waitForURL(/\/food-album\?/);
+  assert.equal(new URL(page.url()).searchParams.get('scope'), 'sample');
+  assert.equal(await page.getByRole('tab', { name: 'Sample meals', exact: true }).getAttribute('aria-selected'), 'true');
+  await page.getByTestId(`food-sticker-${toast.id}`).waitFor();
+  await readable();
+  await page.screenshot({ path: `${output}/food-sticker-album.png` });
+  await page.goto(base + '/archive'); await ready();
+  await page.getByTestId(`calendar-day-${toast.date}`).getByRole('img', { name: toast.title, exact: true }).waitFor();
+  await readable();
+  assert.deepEqual((await read('meals')).find((meal) => meal.id === toast.id), withSticker);
+  console.log('PASS real transparent sticker: original photo/metadata unchanged; persisted after refresh; sample album and calendar display it');
 
   // Recreate an old completed session in this isolated browser, with an edited and a deleted sample.
   await page.evaluate(() => {

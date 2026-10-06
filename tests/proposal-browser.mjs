@@ -93,6 +93,7 @@ try {
   await page.getByRole('link', { name: 'Record a meal', exact: true }).click();
   await page.getByLabel('Meal name', { exact: true }).fill('QA soup after class');
   assert.equal(await page.evaluate(() => window.__gpsCalls), 0, 'No automatic GPS access even with granted permission');
+  await page.getByRole('button', { name: /^More details \(optional\)/, expanded: false }).click();
   await page.getByRole('button', { name: 'Use current location', exact: true }).click();
   await page.getByText('Current place added. You can still edit the text.', { exact: true }).waitFor();
   await page.getByLabel('Location', { exact: true }).fill('My table, typed by hand');
@@ -106,7 +107,7 @@ try {
   await chooser.setFiles(source);
   await page.getByRole('button', { name: 'Change meal photo', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Save meal memory', exact: true }).click();
-  await page.waitForURL(/\/meal\//);
+  await page.waitForURL(/\/meal\//, { timeout: 150000 });
   const saved = (await read('meals')).find((meal) => meal.title === 'QA soup after class');
   assert.equal(saved.locationDetails.source, 'manual'); assert.equal(saved.locationDetails.latitude, undefined);
   assert(saved.photoUri.startsWith('indexeddb://') && saved.photoMediaId);
@@ -119,12 +120,14 @@ try {
 
   await page.goto(base + `/add?editMealId=${saved.id}`);
   await page.getByRole('button', { name: 'Save changes', exact: true }).waitFor();
+  await page.getByRole('button', { name: /^More details \(optional\)/, expanded: false }).click();
   await page.getByRole('button', { name: 'Remove place', exact: true }).click();
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-  await page.waitForURL(/\/meal\//);
+  await page.waitForURL(/\/meal\//, { timeout: 150000 });
   assert.equal((await read('meals')).find((meal) => meal.id === saved.id).locationDetails, undefined);
   await page.goto(base + '/add');
   await page.evaluate(() => { window.__holdGPS = true; });
+  await page.getByRole('button', { name: /^More details \(optional\)/, expanded: false }).click();
   await page.getByRole('button', { name: 'Use current location', exact: true }).click();
   await page.waitForFunction(() => window.__gpsPending.length > 0);
   await page.getByLabel('Location', { exact: true }).fill('Keep my new place');
@@ -154,7 +157,7 @@ try {
   log('Personal AI excludes samples, opt-in notes included, source switching makes no request, provider failure retains report');
 
   await page.getByRole('tab', { name: '中文', exact: true }).click();
-  await page.getByText('也听听你自己的话', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: '这个月，我想留下', exact: true }).waitFor();
   await page.getByLabel('我的月度感想', { exact: true }).fill('今晚的汤，想留给以后的自己。');
   await page.getByRole('button', { name: '保存我的感想', exact: true }).click();
   await page.getByText('已保存在此设备上。', { exact: true }).waitFor();

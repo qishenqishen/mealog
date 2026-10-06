@@ -26,6 +26,9 @@ export interface MonthlyInput {
   month: string;
   locale: ReportLocale;
   meals: InsightMeal[];
+  period?: 'week' | 'month' | 'year';
+  rangeStart?: string;
+  rangeEnd?: string;
 }
 
 export interface MonthlyMetrics {
@@ -54,6 +57,10 @@ export interface MonthlyReport {
   metrics: MonthlyMetrics;
   narrative: Narrative;
   evidenceMealIds: string[];
+  usage?: { inputTokens?: number; outputTokens?: number; latencyMs: number };
+  period?: 'week' | 'month' | 'year';
+  rangeStart?: string;
+  rangeEnd?: string;
 }
 
 export class InsightError extends Error {
@@ -88,7 +95,10 @@ function tags<T extends string>(value: unknown, allowed: T[]): T[] {
 
 export function validateInput(value: unknown): MonthlyInput {
   const root = object(value);
-  keys(root, ['version', 'month', 'locale', 'meals']);
+  const periodKeys = 'period' in root ? ['period', 'rangeStart', 'rangeEnd'] : [];
+  keys(root, ['version', 'month', 'locale', 'meals', ...periodKeys]);
+  const validDate = (date: unknown): date is string => typeof date === 'string' && /^(19|20)\d{2}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(`${date}T12:00:00Z`)) && new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) === date;
+  if (periodKeys.length && (!['week', 'month', 'year'].includes(String(root.period)) || !validDate(root.rangeStart) || !validDate(root.rangeEnd) || root.rangeStart > root.rangeEnd || (Date.parse(root.rangeEnd) - Date.parse(root.rangeStart)) / 86400000 > (root.period === 'week' ? 6 : root.period === 'month' ? 30 : 365))) throw new InsightError('invalid_input');
   if (root.version !== 1 || (root.locale !== 'en' && root.locale !== 'zh') ||
       typeof root.month !== 'string' || !/^(19|20)\d{2}-(0[1-9]|1[0-2])$/.test(root.month)) {
     throw new InsightError('invalid_input');
@@ -103,7 +113,7 @@ export function validateInput(value: unknown): MonthlyInput {
     if (!/^[a-zA-Z0-9_-]+$/.test(id) || ids.has(id)) throw new InsightError('invalid_input');
     ids.add(id);
     const date = boundedText(meal.date, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date.slice(0, 7) !== month || !Number.isFinite(Date.parse(`${date}T12:00:00Z`)) ||
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (periodKeys.length ? date < String(root.rangeStart) || date > String(root.rangeEnd) : date.slice(0, 7) !== month) || !Number.isFinite(Date.parse(`${date}T12:00:00Z`)) ||
         new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date) throw new InsightError('invalid_input');
     if (!MEAL_TYPES.includes(meal.mealType as MealType) || typeof meal.hasPhoto !== 'boolean') throw new InsightError('invalid_input');
     return {
@@ -112,7 +122,7 @@ export function validateInput(value: unknown): MonthlyInput {
       note: boundedText(meal.note, 240, true), hasPhoto: meal.hasPhoto,
     };
   }).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-  return { version: 1, month, locale: root.locale, meals };
+  return { version: 1, month, locale: root.locale, meals, ...(periodKeys.length ? { period: root.period as MonthlyInput['period'], rangeStart: String(root.rangeStart), rangeEnd: String(root.rangeEnd) } : {}) };
 }
 
 export function calculateMetrics(meals: InsightMeal[]): MonthlyMetrics {
@@ -152,8 +162,15 @@ export function validateNarrative(value: unknown, allowedIds: string[]): Narrati
 export function validateReport(value: unknown, input: MonthlyInput): MonthlyReport {
   const report = object(value);
   keys(report, ['version', 'month', 'locale', 'provider', 'model', 'generatedAt', 'metrics', 'narrative', 'evidenceMealIds',
-    ...('contentVersion' in report ? ['contentVersion'] : [])]);
+    ...('contentVersion' in report ? ['contentVersion'] : []), ...('usage' in report ? ['usage'] : []), ...(input.period ? ['period', 'rangeStart', 'rangeEnd'] : [])]);
+  if (input.period && (report.period !== input.period || report.rangeStart !== input.rangeStart || report.rangeEnd !== input.rangeEnd)) throw new InsightError('invalid_output', 502);
   if ('contentVersion' in report && report.contentVersion !== CONTENT_VERSION) throw new InsightError('invalid_output', 502);
+  let usage: MonthlyReport['usage'];
+  if ('usage' in report) {
+    const value = object(report.usage);
+    if (Object.keys(value).some(key => !['inputTokens', 'outputTokens', 'latencyMs'].includes(key)) || !Number.isFinite(value.latencyMs) || Number(value.latencyMs) < 0 || ['inputTokens', 'outputTokens'].some(key => value[key] !== undefined && (!Number.isInteger(value[key]) || Number(value[key]) < 0))) throw new InsightError('invalid_output', 502);
+    usage = value as unknown as NonNullable<MonthlyReport['usage']>;
+  }
   const ids = input.meals.map((meal) => meal.id);
   if (report.version !== 1 || report.month !== input.month || report.locale !== input.locale ||
       report.provider !== PROVIDER || report.model !== MODEL || typeof report.generatedAt !== 'string' ||
@@ -166,6 +183,8 @@ export function validateReport(value: unknown, input: MonthlyInput): MonthlyRepo
   return {
     version: 1, month: input.month, locale: input.locale, provider: PROVIDER, model: MODEL,
     ...(report.contentVersion === CONTENT_VERSION ? { contentVersion: CONTENT_VERSION } : {}),
+    ...(input.period ? { period: input.period, rangeStart: input.rangeStart, rangeEnd: input.rangeEnd } : {}),
+    ...(usage ? { usage } : {}),
     generatedAt: report.generatedAt, metrics: calculateMetrics(input.meals),
     narrative: validateNarrative(report.narrative, report.evidenceMealIds), evidenceMealIds: report.evidenceMealIds,
   };

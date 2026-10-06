@@ -1,20 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 import { ensureGuestIdentity } from '../src/auth';
 import { seedDemoData } from '../src/demo/seedData';
 import { I18nProvider, useI18n } from '../src/i18n';
 import { completeOnboarding, runMediaMigrationOnce } from '../src/storage';
+import { trackEvent } from '../src/product/store';
+import { getMeals } from '../src/storage';
 import { colors } from '../src/theme';
 
 function AppRoot() {
   const { locale } = useI18n();
+  const pathname = usePathname();
+  const libraryView = pathname === '/archive' || pathname === '/photobook';
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [viewportHeight, setViewportHeight] = useState<number>();
+
+  useEffect(() => {
+    if (ready && ['/archive', '/photobook', '/people', '/table'].includes(pathname)) void getMeals().then(items => { if (items.some(item => item.origin !== 'sample')) void trackEvent('revisit'); }).catch(() => undefined);
+  }, [pathname, ready]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -50,9 +58,9 @@ function AppRoot() {
   return (
     <View style={[styles.stage, viewportHeight ? { height: viewportHeight, flex: undefined } : undefined]}>
       {Platform.OS === 'web' ? React.createElement('style', null,
-        'html,body,#root{height:100%;height:100dvh;margin:0;overflow:hidden}#root{min-height:0}*{box-sizing:border-box}body{background:#ebe9e4}button,input,textarea{font:inherit}input,textarea{font-size:16px!important}a:focus-visible,[role=button]:focus-visible{outline:2px solid #5c4033;outline-offset:3px}'
+        'html,body,#root{height:100%;height:100dvh;margin:0;overflow:hidden}#root{min-height:0}*{box-sizing:border-box}body{background:#e5e3d9}:where([dir=auto]){font-family:"Helvetica Neue","PingFang SC",Arial,sans-serif}button,input,textarea{font:inherit}input,textarea{font-size:16px!important}#mealog-hero-shade{background:linear-gradient(to bottom,transparent,rgba(24,21,15,.76))!important}a:focus-visible,[role=button]:focus-visible{outline:2px solid #5c4033;outline-offset:3px}'
       ) : null}
-      <View style={styles.app} testID="mealog-app">
+      <View style={[styles.app, libraryView && Platform.OS === 'web' && { maxWidth: 1100 }]} testID="mealog-app">
         <StatusBar style="dark" />
         {ready ? (
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
@@ -61,6 +69,8 @@ function AppRoot() {
             <Stack.Screen name="showcase" />
             <Stack.Screen name="portfolio-preview" />
             <Stack.Screen name="meal/[id]" />
+            <Stack.Screen name="food-album" />
+            <Stack.Screen name="photobook" />
             <Stack.Screen name="people/index" />
             <Stack.Screen name="profile" />
             <Stack.Screen name="people/[id]" />
@@ -89,10 +99,10 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  stage: { flex: 1, minHeight: 0, alignItems: 'center', backgroundColor: '#ebe9e4' },
+  stage: { flex: 1, minHeight: 0, alignItems: 'center', backgroundColor: '#e5e3d9' },
   app: { flex: 1, minHeight: 0, width: '100%', maxWidth: Platform.OS === 'web' ? 460 : undefined, backgroundColor: colors.background, overflow: 'hidden' },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 36, gap: 20 },
-  brand: { color: colors.primary, fontSize: 32, fontStyle: 'italic' },
+  brand: { color: colors.primary, fontSize: 28, fontStyle: 'italic' },
   message: { color: colors.mutedText, textAlign: 'center', fontSize: 15, lineHeight: 24 },
   retry: { paddingVertical: 14, paddingHorizontal: 28, backgroundColor: colors.primary, borderRadius: 8 },
   retryText: { color: colors.background, fontSize: 15 },

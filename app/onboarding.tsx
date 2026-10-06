@@ -441,8 +441,8 @@ const styles = StyleSheet.create({
   },
   title: {
     maxWidth: 360,
-    fontSize: 34,
-    lineHeight: 39,
+    fontSize: 26,
+    lineHeight: 32,
     fontStyle: 'italic',
     color: colors.primary,
   },

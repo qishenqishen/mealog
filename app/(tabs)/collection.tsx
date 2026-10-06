@@ -26,7 +26,7 @@ import {
 import type { AchievementFamily, AchievementMigrationSummary } from '../../src/types';
 import AchievementStamp from '../../src/components/AchievementStamp';
 import { assertKeepsakeArtCoverage } from '../../src/constants/keepsakeArt';
-import { colors, shadow } from '../../src/theme';
+import { colors, shadow, fonts } from '../../src/theme';
 import LoadState from '../../src/components/LoadState';
 
 type CollectionState = {
@@ -200,7 +200,7 @@ function StampCell({
         {hiddenLocked
           ? t('A small moment\nis still waiting.')
           : unlocked
-            ? t('found')
+            ? formatDate(achievement.progress.unlockedAt, locale)
             : `${achievement.progress.currentValue}/${achievement.progress.targetValue}`}
       </Text>
     </Pressable>
@@ -251,20 +251,13 @@ function FamilyStampGrid({
   achievements: EvaluatedAchievement[];
   onStampPress: (achievement: EvaluatedAchievement) => void;
 }) {
-  const { t } = useI18n();
-  const unlockedCount = achievements.filter(isUnlocked).length;
-  const progressRatio = achievements.length > 0
-    ? unlockedCount / achievements.length
-    : 0;
+  const { t, locale } = useI18n();
 
   return (
     <View style={styles.familySection}>
       <View style={styles.familyHeader}>
         <Text style={styles.familyTitle}>{t(FAMILY_LABELS[family])}</Text>
-        <Text style={styles.familyCount}>{unlockedCount} / {achievements.length}</Text>
-      </View>
-      <View style={styles.familyProgressTrack}>
-        <View style={[styles.familyProgressFill, { width: `${Math.round(progressRatio * 100)}%` }]} />
+        <Text style={styles.familyCount}>{achievements.length}{locale === 'zh' ? ' 件' : ' keepsakes'}</Text>
       </View>
       <View style={styles.stampGrid}>
         {achievements.map((achievement) => (
@@ -324,7 +317,7 @@ function KeepsakeDetailSheet({
             </Text>
             <Text style={styles.detailDescription}>{description}</Text>
 
-            {!hiddenLocked ? (
+            {!hiddenLocked && !unlocked ? (
               <View style={styles.detailProgressBlock}>
                 <View style={styles.detailProgressTop}>
                   <Text style={styles.detailProgressLabel}>{t("Progress")}</Text>
@@ -482,6 +475,8 @@ export default function CollectionScreen() {
   const [quietToast, setQuietToast] = useState<EvaluatedAchievement | undefined>();
   const [selectedAchievement, setSelectedAchievement] = useState<EvaluatedAchievement | undefined>();
   const [migrationDismissed, setMigrationDismissed] = useState(false);
+  const [showUpcoming, setShowUpcoming] = useState(false);
+  const [shelfPage, setShelfPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
@@ -513,14 +508,14 @@ export default function CollectionScreen() {
   );
 
   const achievements = state?.achievements ?? [];
-  const unlocked = achievements.filter(isUnlocked);
-  const newlyFound = achievements
-    .filter((achievement) => achievement.progress.status === 'newly_unlocked')
-    .slice(0, 6);
+  const unlocked = achievements.filter(isUnlocked)
+    .sort((a, b) => (b.progress.unlockedAt ?? '').localeCompare(a.progress.unlockedAt ?? ''));
   const familyGroups = useMemo(
-    () => getFamilyAchievementGroups(achievements),
+    () => getFamilyAchievementGroups(achievements.filter((achievement) => !isUnlocked(achievement))),
     [achievements],
   );
+  const pageCount = Math.max(1, Math.ceil(unlocked.length / 6));
+  const currentPage = Math.min(shelfPage, pageCount - 1);
   const secretAchievements = achievements.filter(isHiddenLocked);
   const almostThere = state?.closest.slice(0, 3) ?? [];
   const migrationSummary = state?.migrationSummary;
@@ -626,24 +621,44 @@ export default function CollectionScreen() {
       >
         <View style={styles.header}>
           <Text style={styles.kicker}>{t("Mealog collection")}</Text>
-          <Text style={styles.title}>{t("Keepsake shelf")}</Text>
+          <Text style={styles.title}>{locale === 'zh' ? '日子的纪念。' : 'Little things, kept.'}</Text>
           <Text style={styles.subtitle}>
-            {t("A quiet shelf of stamps found through meals, people, notes, photographs, and seasons.")}</Text>
+            {locale === 'zh' ? '日子慢慢过，总有一些值得留下。' : 'Small keepsakes that lead back to your table.'}</Text>
           <Pressable accessibilityRole="button" style={styles.profileLink} onPress={() => router.push('/profile')}>
             <Text style={styles.profileLinkText}>{t('Your table & settings')}</Text>
           </Pressable>
         </View>
 
         <LoadState loading={loading} error={error} onRetry={loadAchievements} />
-        <View style={styles.shelfHero}>
-          <Text style={styles.heroQuote}>
-            "{unlocked.length === 0
-              ? t('The shelf is waiting for its first small object.')
-              : t('{count} keepsakes have found their place.', { count: unlocked.length })}"
-          </Text>
-          <Text style={styles.heroMeta}>
-            {t('{count} active keepsakes', { count: achievements.length })}</Text>
-        </View>
+        {state ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              {locale === 'zh' ? `已经留下的纪念 · ${unlocked.length}` : `On your shelf · ${unlocked.length}`}
+            </Text>
+            {unlocked.length > 0 ? (
+              <View style={styles.stampGrid}>
+                {unlocked.slice(currentPage * 6, (currentPage + 1) * 6).map((achievement) => (
+                  <StampCell key={achievement.definition.id} achievement={achievement} onPress={handleOpenStamp} />
+                ))}
+              </View>
+            ) : (
+              <View style={styles.emptyPanel}>
+                <Text style={styles.emptyTitle}>{t('The shelf is waiting for its first small object.')}</Text>
+                <Text style={styles.emptyBody}>
+                  {locale === 'zh' ? '从一顿普通的饭开始，纪念会随记录慢慢留下。' : 'Begin with an everyday meal. Keepsakes will follow your memories.'}
+                </Text>
+                <Pressable accessibilityRole="button" style={styles.profileLink} onPress={() => router.push('/add')}>
+                  <Text style={styles.profileLinkText}>{locale === 'zh' ? '记下一餐' : 'Save a meal'}</Text>
+                </Pressable>
+              </View>
+            )}
+            {pageCount > 1 && <View style={styles.shelfPager}>
+              <Pressable accessibilityRole="button" accessibilityLabel={locale === 'zh' ? '上一页收藏' : 'Previous keepsakes'} disabled={currentPage === 0} onPress={() => setShelfPage(currentPage - 1)} style={[styles.pagerButton, currentPage === 0 && { opacity: 0.3 }]}><Text style={styles.profileLinkText}>←</Text></Pressable>
+              <Text style={styles.profileLinkText}>{currentPage + 1} / {pageCount}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel={locale === 'zh' ? '下一页收藏' : 'Next keepsakes'} disabled={currentPage === pageCount - 1} onPress={() => setShelfPage(currentPage + 1)} style={[styles.pagerButton, currentPage === pageCount - 1 && { opacity: 0.3 }]}><Text style={styles.profileLinkText}>→</Text></Pressable>
+            </View>}
+          </View>
+        ) : null}
 
         {showMigrationSummary ? (
           <Pressable
@@ -658,67 +673,68 @@ export default function CollectionScreen() {
           </Pressable>
         ) : null}
 
-        {newlyFound.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("Newly Found")}</Text>
-            <View style={styles.stampGrid}>
-              {newlyFound.map((achievement) => (
-                <StampCell
-                  key={achievement.definition.id}
-                  achievement={achievement}
-                  onPress={handleOpenStamp}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showUpcoming }}
+          onPress={() => setShowUpcoming((visible) => !visible)}
+          style={styles.upcomingToggle}
+        >
+          <Text style={styles.upcomingToggleText}>
+            {locale === 'zh' ? (showUpcoming ? '收起其他纪念' : '看看还有哪些纪念') : (showUpcoming ? 'Hide other keepsakes' : 'Explore other keepsakes')}
+          </Text>
+          <Text style={styles.upcomingToggleText}>{showUpcoming ? '−' : '＋'}</Text>
+        </Pressable>
+
+        {showUpcoming ? (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("Almost There")}</Text>
+              {almostThere.length > 0 ? (
+                <View style={styles.almostGrid}>
+                  {almostThere.map((achievement) => (
+                    <AlmostThereCard
+                      key={achievement.definition.id}
+                      achievement={achievement}
+                      onPress={handleOpenStamp}
+                    />
+                  ))}
+                </View>
+              ) : loading || error ? null : (
+                <View style={styles.emptyPanel}>
+                  <Text style={styles.emptyTitle}>{t("Nothing close yet.")}</Text>
+                  <Text style={styles.emptyBody}>
+                    {t("A few more meal memories will bring the nearest keepsakes into view.")}</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("Keepsake Families")}</Text>
+              {familyGroups.map((group) => (
+                <FamilyStampGrid
+                  key={group.family}
+                  family={group.family}
+                  achievements={group.achievements}
+                  onStampPress={handleOpenStamp}
                 />
               ))}
             </View>
-          </View>
-        ) : null}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("Almost There")}</Text>
-          {almostThere.length > 0 ? (
-            <View style={styles.almostGrid}>
-              {almostThere.map((achievement) => (
-                <AlmostThereCard
-                  key={achievement.definition.id}
-                  achievement={achievement}
-                  onPress={handleOpenStamp}
-                />
-              ))}
-            </View>
-          ) : loading || error ? null : (
-            <View style={styles.emptyPanel}>
-              <Text style={styles.emptyTitle}>{t("Nothing close yet.")}</Text>
-              <Text style={styles.emptyBody}>
-                {t("A few more meal memories will bring the nearest keepsakes into view.")}</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("Keepsake Families")}</Text>
-          {familyGroups.map((group) => (
-            <FamilyStampGrid
-              key={group.family}
-              family={group.family}
-              achievements={group.achievements}
-              onStampPress={handleOpenStamp}
-            />
-          ))}
-        </View>
-
-        {secretAchievements.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("Secret Keepsakes")}</Text>
-            <View style={styles.stampGrid}>
-              {secretAchievements.slice(0, 6).map((achievement) => (
-                <StampCell
-                  key={achievement.definition.id}
-                  achievement={achievement}
-                  onPress={handleOpenStamp}
-                />
-              ))}
-            </View>
-          </View>
+            {secretAchievements.length > 0 ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>{t("Secret Keepsakes")}</Text>
+                <View style={styles.stampGrid}>
+                  {secretAchievements.slice(0, 6).map((achievement) => (
+                    <StampCell
+                      key={achievement.definition.id}
+                      achievement={achievement}
+                      onPress={handleOpenStamp}
+                    />
+                  ))}
+                </View>
+              </View>
+            ) : null}
+          </>
         ) : null}
       </ScrollView>
 
@@ -734,6 +750,8 @@ export default function CollectionScreen() {
 }
 
 const styles = StyleSheet.create({
+  shelfPager: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, borderTopWidth: 1, borderColor: colors.primary },
+  pagerButton: { minWidth: 48, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   safe: {
     flex: 1,
     backgroundColor: colors.background,
@@ -741,23 +759,22 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 18,
     paddingTop: 18,
-    paddingBottom: 118,
+    paddingBottom: 30,
   },
   header: {
-    marginBottom: 22,
+    marginBottom: 18,
   },
-  kicker: {
+  kicker: { fontFamily: fonts.body,
     fontSize: 12,
-    color: colors.muted,
+    color: colors.mutedText,
     marginBottom: 7,
   },
-  title: {
-    fontSize: 34,
-    lineHeight: 40,
+  title: { fontFamily: fonts.editorial,
+    fontSize: 26,
+    lineHeight: 32,
     color: colors.primary,
-    fontStyle: 'italic',
   },
-  subtitle: {
+  subtitle: { fontFamily: fonts.body,
     marginTop: 8,
     maxWidth: 330,
     fontSize: 14,
@@ -768,37 +785,19 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     borderRadius: 17,
     paddingHorizontal: 13,
-    paddingVertical: 8,
-    marginTop: 14,
+    minHeight: 44,
+    justifyContent: 'center',
+    marginTop: 8,
     backgroundColor: 'rgba(248, 232, 212, 0.36)',
   },
-  profileLinkText: {
+  profileLinkText: { fontFamily: fonts.body,
     fontSize: 12,
     color: colors.secondary,
-    fontStyle: 'italic',
   },
-  shelfHero: {
-    borderRadius: 28,
-    paddingHorizontal: 22,
-    paddingTop: 23,
-    paddingBottom: 19,
-    marginBottom: 18,
-    backgroundColor: 'rgba(255, 253, 248, 0.72)',
-    ...shadow.soft,
-  },
-  heroQuote: {
-    fontSize: 22,
-    lineHeight: 31,
-    color: colors.primary,
-    fontStyle: 'italic',
-    marginBottom: 12,
-  },
-  heroMeta: {
-    fontSize: 13,
-    color: colors.mutedText,
-  },
+  upcomingToggle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 52, borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.primary, marginBottom: 20 },
+  upcomingToggleText: { fontSize: 14, color: colors.secondary },
   migrationBanner: {
-    borderRadius: 22,
+    borderRadius: 12,
     paddingHorizontal: 18,
     paddingVertical: 15,
     marginBottom: 24,
@@ -810,7 +809,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     color: colors.primary,
-    fontStyle: 'italic',
     marginBottom: 6,
   },
   migrationButton: {
@@ -820,11 +818,10 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 30,
   },
-  sectionTitle: {
-    fontSize: 22,
-    lineHeight: 29,
+  sectionTitle: { fontFamily: fonts.editorial,
+    fontSize: 17,
+    lineHeight: 23,
     color: colors.primary,
-    fontStyle: 'italic',
     marginBottom: 14,
   },
   almostGrid: {
@@ -834,14 +831,15 @@ const styles = StyleSheet.create({
   almostCard: {
     flex: 1,
     minHeight: 138,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingTop: 12,
     paddingBottom: 10,
-    backgroundColor: 'rgba(255, 253, 248, 0.64)',
+    backgroundColor: 'rgba(255, 253, 248, 0.18)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(185, 165, 138, 0.24)',
+    borderColor: 'rgba(185, 165, 138, 0.16)',
+    borderStyle: 'solid',
   },
   almostTitle: {
     marginTop: 7,
@@ -850,7 +848,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     textAlign: 'center',
     color: colors.primary,
-    fontStyle: 'italic',
   },
   almostProgress: {
     marginTop: 3,
@@ -860,7 +857,7 @@ const styles = StyleSheet.create({
   almostHint: {
     marginTop: 2,
     fontSize: 10,
-    color: colors.muted,
+    color: colors.mutedText,
   },
   familySection: {
     marginBottom: 30,
@@ -873,26 +870,13 @@ const styles = StyleSheet.create({
   },
   familyTitle: {
     flex: 1,
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 17,
+    lineHeight: 23,
     color: colors.secondary,
-    fontStyle: 'italic',
   },
   familyCount: {
     fontSize: 13,
     color: colors.mutedText,
-  },
-  familyProgressTrack: {
-    height: 6,
-    borderRadius: 8,
-    marginBottom: 14,
-    backgroundColor: 'rgba(234, 223, 204, 0.56)',
-    overflow: 'hidden',
-  },
-  familyProgressFill: {
-    height: '100%',
-    borderRadius: 8,
-    backgroundColor: 'rgba(180, 145, 88, 0.78)',
   },
   stampGrid: {
     flexDirection: 'row',
@@ -903,18 +887,20 @@ const styles = StyleSheet.create({
   stampCell: {
     width: '31.2%',
     minHeight: 136,
-    borderRadius: 20,
+    borderRadius: 12,
     alignItems: 'center',
     paddingHorizontal: 6,
     paddingTop: 10,
     paddingBottom: 9,
-    backgroundColor: 'rgba(255, 253, 248, 0.48)',
+    backgroundColor: 'rgba(255, 253, 248, 0.18)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(185, 165, 138, 0.2)',
+    borderColor: 'rgba(185, 165, 138, 0.16)',
+    borderStyle: 'solid',
   },
   stampCellUnlocked: {
-    backgroundColor: 'rgba(255, 253, 248, 0.76)',
-    borderColor: 'rgba(180, 145, 88, 0.28)',
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
+    borderStyle: 'solid',
   },
   stampCellNew: {
     borderColor: 'rgba(180, 145, 88, 0.62)',
@@ -953,7 +939,6 @@ const styles = StyleSheet.create({
   tierText: {
     fontSize: 9,
     color: colors.secondary,
-    fontStyle: 'italic',
   },
   checkBadge: {
     position: 'absolute',
@@ -983,19 +968,18 @@ const styles = StyleSheet.create({
     fontSize: 8,
     color: colors.background,
   },
-  stampTitle: {
+  stampTitle: { fontFamily: fonts.body,
     marginTop: 5,
     minHeight: 34,
     fontSize: 12,
     lineHeight: 16,
     textAlign: 'center',
     color: colors.primary,
-    fontStyle: 'italic',
   },
   stampTitleHidden: {
     color: colors.secondary,
   },
-  stampProgress: {
+  stampProgress: { fontFamily: fonts.body,
     marginTop: 2,
     fontSize: 10,
     color: colors.mutedText,
@@ -1005,18 +989,17 @@ const styles = StyleSheet.create({
     lineHeight: 13,
   },
   emptyPanel: {
-    borderRadius: 22,
+    borderRadius: 12,
     paddingHorizontal: 18,
     paddingVertical: 20,
     backgroundColor: 'rgba(255, 253, 248, 0.5)',
     borderWidth: 1,
-    borderStyle: 'dashed',
+    borderStyle: 'solid',
     borderColor: 'rgba(185, 165, 138, 0.28)',
   },
-  emptyTitle: {
-    fontSize: 18,
+  emptyTitle: { fontFamily: fonts.editorial,
+    fontSize: 16,
     color: colors.primary,
-    fontStyle: 'italic',
     marginBottom: 7,
   },
   emptyBody: {
@@ -1065,13 +1048,12 @@ const styles = StyleSheet.create({
     borderRadius: 75,
     backgroundColor: 'rgba(248, 232, 212, 0.64)',
   },
-  detailTitle: {
+  detailTitle: { fontFamily: fonts.editorial,
     marginTop: 6,
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 17,
+    lineHeight: 23,
     textAlign: 'center',
     color: colors.primary,
-    fontStyle: 'italic',
   },
   detailMeta: {
     marginTop: 5,
@@ -1087,7 +1069,7 @@ const styles = StyleSheet.create({
     color: colors.mutedText,
   },
   detailProgressBlock: {
-    borderRadius: 22,
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 15,
     marginTop: 20,
@@ -1100,7 +1082,7 @@ const styles = StyleSheet.create({
   },
   detailProgressLabel: {
     fontSize: 12,
-    color: colors.muted,
+    color: colors.mutedText,
   },
   detailProgressValue: {
     fontSize: 12,
@@ -1128,7 +1110,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 13,
     color: colors.secondary,
-    fontStyle: 'italic',
   },
   detailActions: {
     flexDirection: 'row',
@@ -1138,7 +1119,7 @@ const styles = StyleSheet.create({
   detailPrimary: {
     flex: 1,
     minHeight: 46,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(92, 64, 51, 0.9)',
@@ -1148,19 +1129,17 @@ const styles = StyleSheet.create({
   },
   detailPrimaryText: {
     color: colors.background,
-    fontStyle: 'italic',
   },
   detailSecondary: {
     flex: 1,
     minHeight: 46,
-    borderRadius: 22,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(248, 232, 212, 0.42)',
   },
   detailSecondaryText: {
     color: colors.secondary,
-    fontStyle: 'italic',
   },
 
   toastWrap: {
@@ -1175,7 +1154,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 350,
     minHeight: 72,
-    borderRadius: 25,
+    borderRadius: 125,
     paddingHorizontal: 14,
     paddingVertical: 10,
     flexDirection: 'row',
@@ -1191,13 +1170,12 @@ const styles = StyleSheet.create({
   },
   toastKicker: {
     fontSize: 11,
-    color: colors.muted,
+    color: colors.mutedText,
   },
   toastTitle: {
     marginTop: 3,
     fontSize: 16,
     color: colors.primary,
-    fontStyle: 'italic',
   },
   standardUnlockOverlay: {
     flex: 1,
@@ -1224,7 +1202,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontSize: 13,
     color: colors.secondary,
-    fontStyle: 'italic',
   },
   paperSparkle: {
     position: 'absolute',
@@ -1280,15 +1257,14 @@ const styles = StyleSheet.create({
   unlockKicker: {
     marginTop: 16,
     fontSize: 12,
-    color: colors.muted,
+    color: colors.mutedText,
   },
   unlockTitle: {
     marginTop: 7,
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 26,
+    lineHeight: 32,
     textAlign: 'center',
     color: colors.primary,
-    fontStyle: 'italic',
   },
   unlockBody: {
     marginTop: 9,
@@ -1311,25 +1287,23 @@ const styles = StyleSheet.create({
   unlockPrimary: {
     flex: 1,
     minHeight: 44,
-    borderRadius: 20,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(92, 64, 51, 0.9)',
   },
   unlockPrimaryText: {
     color: colors.background,
-    fontStyle: 'italic',
   },
   unlockSecondary: {
     flex: 1,
     minHeight: 44,
-    borderRadius: 20,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(248, 232, 212, 0.42)',
   },
   unlockSecondaryText: {
     color: colors.secondary,
-    fontStyle: 'italic',
   },
 });

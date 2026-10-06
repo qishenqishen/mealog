@@ -301,7 +301,7 @@ async function createWebThumbnailBlob(blob: Blob) {
     context.drawImage(decoded.image, 0, 0, canvas.width, canvas.height);
 
     const thumbnail = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, 'image/jpeg', 0.72);
+      canvas.toBlob(resolve, /image\/(png|webp)/.test(blob.type) ? 'image/png' : 'image/jpeg', 0.72);
     });
 
     if (!thumbnail?.size) throw new Error('The image thumbnail is empty.');
@@ -581,4 +581,14 @@ export async function verifyManagedMedia(mediaId?: string): Promise<boolean> {
     await assertManagedMediaReadable(mediaId);
     return true;
   } catch { return false; }
+}
+
+/** Export reads the stored original, never the display object URL or an external image. */
+export async function getManagedOriginalBlob(record: ManagedMedia): Promise<Blob> {
+  if (Platform.OS !== 'web') throw new Error('Portable backup is currently available on the web');
+  const key = webKeyFromManagedUri(record.localManagedUri);
+  if (!key) throw new Error(`Original image is unavailable: ${record.id}`);
+  const blob = await getWebBlob(key);
+  if (!blob?.size) throw new Error(`Original image is missing: ${record.id}`);
+  return blob;
 }
