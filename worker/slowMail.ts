@@ -1,6 +1,7 @@
 import { json } from './handler';
 
 const ADDRESS = /^[a-f0-9]{64}$/;
+const GUEST_PATH = /^\/api\/slow-mail\/guest(?:\/photos\/([0-2]))?$/;
 const LETTER_ID = '[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}';
 const PHOTO_PATH = new RegExp(`^/api/slow-mail/(${LETTER_ID})/photos/([0-2])$`);
 const MONTHLY_LIMIT = 3;
@@ -18,9 +19,12 @@ type Letter = {
   month: string;
   releaseAt: string;
   photos: { type: string }[];
+  guestKey?: string;
 };
 type LetterRow = Omit<Letter, 'releaseAt' | 'photos'> & { releaseAt: number; photos: string };
 const LETTER_COLUMNS = 'id, senderName, recipientName, text, month, releaseAt, photos';
+const SENT_LETTERS = `SELECT ${LETTER_COLUMNS}, guest_letters.key AS guestKey FROM letters
+  LEFT JOIN guest_letters ON guest_letters.letterId = letters.id`;
 
 class MailError extends Error {
   constructor(readonly code: string, readonly status: number) { super(code); }
@@ -32,6 +36,9 @@ export function initializeMail(sql: SqlStorage) {
     id TEXT PRIMARY KEY, sender TEXT NOT NULL, recipient TEXT NOT NULL, requestId TEXT NOT NULL,
     senderName TEXT NOT NULL, recipientName TEXT NOT NULL, text TEXT NOT NULL, month TEXT NOT NULL,
     releaseAt INTEGER NOT NULL, photos TEXT NOT NULL, bytes INTEGER NOT NULL, UNIQUE(sender, requestId)
+  )`);
+  sql.exec(`CREATE TABLE IF NOT EXISTS guest_letters (
+    letterId TEXT PRIMARY KEY REFERENCES letters(id), key TEXT NOT NULL UNIQUE
   )`);
   sql.exec('CREATE INDEX IF NOT EXISTS mail_sender_release ON letters (sender, releaseAt)');
   sql.exec('CREATE INDEX IF NOT EXISTS mail_recipient_release ON letters (recipient, releaseAt)');
@@ -57,7 +64,47 @@ function monthEnd(now: number) {
 }
 
 function letterView(row: LetterRow): Letter {
-  return { ...row, releaseAt: new Date(row.releaseAt).toISOString(), photos: JSON.parse(row.photos) as Letter['photos'] };
+  const { guestKey, ...letter } = row;
+  return {
+    ...letter,
+    releaseAt: new Date(row.releaseAt).toISOString(),
+    photos: JSON.parse(row.photos) as Letter['photos'],
+    ...(guestKey ? { guestKey } : {}),
+  };
+}
+
+function createGuestKey(sql: SqlStorage, letterId: string) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const bytes = crypto.getRandomValues(new Uint8Array(24));
+    const key = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_');
+    const row = sql.exec<{ key: string }>('INSERT INTO guest_letters VALUES (?, ?) ON CONFLICT(key) DO NOTHING RETURNING key', letterId, key).toArray()[0];
+    if (row) return row.key;
+  }
+  throw new MailError('service_unavailable', 503);
+}
+
+function letterPhoto(sql: SqlStorage, id: string, index: number, photos: Letter['photos']) {
+  const entry = photos[index];
+  if (!entry) throw new MailError('not_found', 404);
+  const rows = sql.exec<{ bytes: ArrayBuffer }>('SELECT bytes FROM mail_photo_chunks WHERE letterId = ? AND photoIndex = ? ORDER BY part', id, index).toArray();
+  if (!rows.length) throw new MailError('not_found', 404);
+  return new Response(new Blob(rows.map(row => row.bytes)), { headers: {
+    'Content-Type': entry.type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox",
+  } });
+}
+
+function openGuestLetter(request: Request, sql: SqlStorage, now: number, photoIndex?: string) {
+  if (request.method !== 'GET') return json({ error: { code: 'method_not_allowed' } }, 405, { Allow: 'GET' });
+  const key = request.headers.get('Authorization')?.match(/^Bearer ([A-Za-z0-9_-]{32})$/)?.[1];
+  if (!key) throw new MailError('not_found', 404);
+  const row = sql.exec<LetterRow>(`SELECT ${LETTER_COLUMNS} FROM letters
+    JOIN guest_letters ON guest_letters.letterId = letters.id WHERE guest_letters.key = ?`, key).toArray()[0];
+  if (!row) throw new MailError('not_found', 404);
+  if (photoIndex !== undefined) {
+    if (row.releaseAt > now) throw new MailError('not_found', 404);
+    return letterPhoto(sql, row.id, Number(photoIndex), JSON.parse(row.photos) as Letter['photos']);
+  }
+  return json({ releaseAt: new Date(row.releaseAt).toISOString(), letter: row.releaseAt <= now ? letterView(row) : null });
 }
 
 function remaining(sql: SqlStorage, address: string, releaseAt: number) {
@@ -151,21 +198,18 @@ export async function handleSlowMail(request: Request, storage: MailStorage, clo
     if ((origin !== null && origin !== url.origin) || request.headers.get('Sec-Fetch-Site') === 'cross-site' || (request.method === 'POST' && origin !== url.origin)) {
       throw new MailError('origin_not_allowed', 403);
     }
+    const { sql } = storage;
+    const guest = url.pathname.match(GUEST_PATH);
+    if (guest) return openGuestLetter(request, sql, clock(), guest[1]);
     const secret = request.headers.get('Authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
     if (!secret) throw new MailError('unauthorized', 401);
     const address = await digest(secret);
-    const { sql } = storage;
     const photo = url.pathname.match(PHOTO_PATH);
     if (photo && request.method === 'GET') {
       const [, id, index] = photo;
       const row = sql.exec<{ photos: string }>('SELECT photos FROM letters WHERE id = ? AND (sender = ? OR (recipient = ? AND releaseAt <= ?))', id, address, address, clock()).toArray()[0];
-      const entry = row && (JSON.parse(row.photos) as Letter['photos'])[Number(index)];
-      if (!entry) throw new MailError('not_found', 404);
-      const rows = sql.exec<{ bytes: ArrayBuffer }>('SELECT bytes FROM mail_photo_chunks WHERE letterId = ? AND photoIndex = ? ORDER BY part', id, Number(index)).toArray();
-      if (!rows.length) throw new MailError('not_found', 404);
-      return new Response(new Blob(rows.map(row => row.bytes)), { headers: {
-        'Content-Type': entry.type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox",
-      } });
+      if (!row) throw new MailError('not_found', 404);
+      return letterPhoto(sql, id, Number(index), JSON.parse(row.photos) as Letter['photos']);
     }
     if (url.pathname !== '/api/slow-mail') throw new MailError('not_found', 404);
     if (request.method === 'GET') {
@@ -181,7 +225,7 @@ export async function handleSlowMail(request: Request, storage: MailStorage, clo
       const now = clock();
       const releaseAt = monthEnd(now);
       const incoming = sql.exec<LetterRow>(`SELECT ${LETTER_COLUMNS} FROM letters WHERE recipient = ? AND releaseAt <= ? ORDER BY releaseAt DESC, rowid DESC`, address, now);
-      const outgoing = sql.exec<LetterRow>(`SELECT ${LETTER_COLUMNS} FROM letters WHERE sender = ? ORDER BY releaseAt DESC, rowid DESC`, address);
+      const outgoing = sql.exec<LetterRow>(`${SENT_LETTERS} WHERE sender = ? ORDER BY releaseAt DESC, letters.rowid DESC`, address);
       return json({ address, remaining: remaining(sql, address, releaseAt), releaseAt: new Date(releaseAt).toISOString(), incoming: incoming.toArray().map(letterView), outgoing: outgoing.toArray().map(letterView) });
     }
     if (request.method !== 'POST') return json({ error: { code: 'method_not_allowed' } }, 405, { Allow: 'GET, POST' });
@@ -190,24 +234,24 @@ export async function handleSlowMail(request: Request, storage: MailStorage, clo
     storage.transactionSync(() => takeNetworkAttempt(sql, bucket, clock(), 12));
     const form = await readLetterForm(request);
     if ([...form.keys()].some(key => key !== 'photo' && !FIELDS.includes(key))) throw new MailError('invalid_letter', 400);
-    const recipient = requiredText(form, 'recipient', 64);
+    const recipient = form.has('recipient') ? requiredText(form, 'recipient', 64) : '';
     const senderName = requiredText(form, 'senderName', 60);
     const recipientName = requiredText(form, 'recipientName', 60);
     const text = requiredText(form, 'text', 1200);
     const month = requiredText(form, 'month', 7);
     const requestId = requiredText(form, 'requestId', 36);
     const expectedRelease = requiredText(form, 'releaseAt', 24);
-    if (recipient === address || !ADDRESS.test(recipient) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !new RegExp(`^${LETTER_ID}$`).test(requestId)) {
+    if (recipient === address || (recipient !== '' && !ADDRESS.test(recipient)) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !new RegExp(`^${LETTER_ID}$`).test(requestId)) {
       throw new MailError('invalid_letter', 400);
     }
     const photos = await readPhotos(form);
     const bytes = photos.reduce((total, photo) => total + photo.bytes.byteLength, 0);
     const letter = storage.transactionSync(() => {
-      const previous = sql.exec<LetterRow>(`SELECT ${LETTER_COLUMNS} FROM letters WHERE sender = ? AND requestId = ?`, address, requestId).toArray()[0];
+      const previous = sql.exec<LetterRow>(`${SENT_LETTERS} WHERE sender = ? AND requestId = ?`, address, requestId).toArray()[0];
       if (previous) return letterView(previous);
       const releaseAt = monthEnd(clock());
       if (new Date(releaseAt).toISOString() !== expectedRelease) throw new MailError('release_changed', 409);
-      if (!hasInbox(sql, recipient)) throw new MailError('recipient_not_found', 404);
+      if (recipient && !hasInbox(sql, recipient)) throw new MailError('recipient_not_found', 404);
       if (remaining(sql, address, releaseAt) <= 0) throw new MailError('monthly_limit', 429);
       // shortcut: one bounded deployment mailbox, shard storage if the initial 512 MiB budget is reached.
       if (sql.databaseSize + bytes > 512 * 1024 * 1024 || sql.exec<{ count: number }>('SELECT COUNT(*) AS count FROM letters').one().count >= 5000) {
@@ -221,7 +265,8 @@ export async function handleSlowMail(request: Request, storage: MailStorage, clo
           sql.exec('INSERT INTO mail_photo_chunks VALUES (?, ?, ?, ?)', id, index, offset / CHUNK_SIZE, photo.bytes.slice(offset, offset + CHUNK_SIZE));
         }
       });
-      return { id, senderName, recipientName, text, month, releaseAt: expectedRelease, photos: attachments };
+      const guestKey = recipient ? undefined : createGuestKey(sql, id);
+      return { id, senderName, recipientName, text, month, releaseAt: expectedRelease, photos: attachments, guestKey };
     });
     return json({ letter });
   } catch (error) {

@@ -13,7 +13,7 @@ export default function Privacy() {
     '应用关闭请求正文与调用日志，不在应用服务器保存用于生成回顾的餐食文字；Cloudflare 官方说明未经明确同意不会将客户内容用于训练或改善服务，其他处理遵循官方条款。我们不把未经核实的“请求后零留存”当作保证。',
     '可在设置中关闭 AI，仅保留本地统计；匿名行为计数默认关闭，开启后仅保存在本机，不含照片、小记、姓名、地点或联系方式，不向分析平台上报。你可以自行导出数据用于试用验证。',
     '卡片默认私密。只有明确点击分享才打开系统分享面板；导出和分享仅包含卡片的文字、时间范围与 AI 标识，不包含其他记录和原图。接收者可以继续保存或转发该图片。',
-    '使用记忆慢递封存信件时，所选文字、署名和原图会存到 Mealog 的投递服务。指定的收信地址在寄出时间后可打开信件，原图可能带有拍摄地点等元数据，也可被对方另存。信箱访问凭据保存在当前浏览器。',
+    '使用记忆慢递封存信件时，所选文字、署名和原图会存到 Mealog 的投递服务。寄出时间后，持有该封信链接的人可阅读正文与照片。链接可以转发，请只发给你想寄的人。原图可能带有拍摄地点等元数据，也可被另存。寄件信箱的访问凭据保存在当前浏览器。',
     'AI 只根据已记录的内容整理回顾，不推断健康、情绪原因或关系变化。引用 ID 校验不等于每个语义事实都正确，你可以逐句查看依据并标记有误。',
     '当前版本无云端照片备份、账号同步、通讯录读取或公开社区。备份为未加密 ZIP，恢复保留本机已有同 ID 记录。删除餐食移入恢复区，不自动清空。',
   ] : [
@@ -23,7 +23,7 @@ export default function Privacy() {
     'Application request-body and invocation logging are disabled. The application server does not retain meal text used to generate reflections. Cloudflare states it does not use customer content for training or service improvement without explicit consent; no unverified zero-retention promise is made.',
     'Disable AI to use local facts only. Anonymous behavior measurement is off by default and remains local, without photos, notes, names, locations or contact data. No analytics platform receives it.',
     'Cards are private by default. Share opens the system share sheet only when selected. Only card text, dates and AI attribution are exported; other records and original photos are excluded. Recipients can retain or forward that image.',
-    'When you seal a Memory Mail letter, the selected text, names and originals are stored by Mealog for delivery. The addressed mailbox can open the letter after its mailing time. Originals may retain details such as capture location and can be kept by the recipient. Mailbox access is stored in this browser.',
+    'When you seal a Memory Mail letter, the selected text, names and originals are stored by Mealog for delivery. Anyone with that letter’s link can open it after its mailing time. Share the link with the person you intend it for. Originals may retain capture details and can be saved by readers. The sender’s mailbox access is stored in their browser.',
     'AI organizes recorded evidence, without inferring health, causes of feelings or relationship changes. Valid IDs do not guarantee semantic truth. Check sources and mark inaccurate observations.',
     'No cloud photo backup, account sync, contacts access or public feed. ZIP backups are unencrypted. Restore keeps existing matching records. Deleted meals stay in the recovery area until restored.',
   ];

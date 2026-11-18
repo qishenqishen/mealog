@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useI18n } from '../i18n';
 import { getSlowMailbox, queueSlowLetter, slowMailError, type SlowLetter, type SlowMailbox } from '../product/slowMail';
+import SlowMailShare from './SlowMailShare';
 import { colors, fonts } from '../theme';
 import type { MealEntry, PersonProfile } from '../types';
 
@@ -21,7 +22,6 @@ export default function SlowMailComposer({ draft, onClose, onMailbox }: {
   const zh = locale === 'zh';
   const copy = (en: string, cn: string) => zh ? cn : en;
   const [person, setPerson] = useState(draft.recipients[0]);
-  const [address, setAddress] = useState('');
   const [senderName, setSenderName] = useState('');
   const [text, setText] = useState(draft.text);
   const [selected, setSelected] = useState<string[]>([]);
@@ -51,9 +51,7 @@ export default function SlowMailComposer({ draft, onClose, onMailbox }: {
     return () => { active.current = false; };
   }, [load]);
 
-  const recipient = address.trim().toLowerCase();
-  const ready = Boolean(mailbox?.remaining && !loading && !saving && senderName.trim() && text.trim()
-    && /^[a-f0-9]{64}$/.test(recipient) && recipient !== mailbox.address && selected.length);
+  const ready = Boolean(mailbox?.remaining && !loading && !saving && senderName.trim() && text.trim() && selected.length);
   const formatDate = (date: string) => new Date(date).toLocaleString(zh ? 'zh-CN' : 'en-US', {
     year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
   });
@@ -66,7 +64,6 @@ export default function SlowMailComposer({ draft, onClose, onMailbox }: {
     try {
       requestId.current ??= crypto.randomUUID();
       const result = await queueSlowLetter({
-        recipient,
         senderName: senderName.trim(),
         recipientName: (person.nickname?.trim() || person.name.trim()).slice(0, 60),
         text: text.trim(),
@@ -105,23 +102,18 @@ export default function SlowMailComposer({ draft, onClose, onMailbox }: {
           {letter ? <>
             <Text accessibilityLiveRegion="polite" style={styles.memory}>{copy('Your letter is sealed.', '这封信已封存。')}</Text>
             <Text style={styles.body}>{copy(`To ${letter.recipientName} · Opens at ${formatDate(letter.releaseAt)}`, `寄给${letter.recipientName} · ${formatDate(letter.releaseAt)}送达`)}</Text>
-            {action(copy('Open mailbox', '打开信箱'), onMailbox, { primary: true })}
+            {letter.guestKey && <SlowMailShare guestKey={letter.guestKey} />}
+            {action(copy('Open mailbox', '打开信箱'), onMailbox)}
           </> : <>
             <Text style={styles.body}>{copy(`A memory from ${draft.month}`, `${draft.month} 的共同记忆`)}</Text>
             <Text style={styles.label}>{copy('To', '收信人')}</Text>
             {draft.recipients.length === 1 ? <Text style={styles.memory}>{person.nickname || person.name}</Text> :
               <View style={styles.choices}>{draft.recipients.map(item => <Pressable key={item.id} accessibilityRole="button"
-                accessibilityState={{ selected: item.id === person.id }} disabled={saving} onPress={() => { setPerson(item); setAddress(''); }}
+                accessibilityState={{ selected: item.id === person.id }} disabled={saving} onPress={() => setPerson(item)}
                 style={[styles.button, item.id === person.id && styles.primary]}>
                 <Text style={styles.buttonText}>{item.nickname || item.name}</Text>
               </Pressable>)}</View>}
-            <TextInput accessibilityLabel={copy('Recipient mailbox address', '收信人信箱地址')} placeholder={copy('Paste their mailbox address', '粘贴对方的信箱地址')}
-              placeholderTextColor={colors.mutedText} value={address} onChangeText={setAddress} autoComplete="off" autoCorrect={false} autoCapitalize="none"
-              editable={!saving} style={styles.input} />
-            <Text style={styles.body}>{copy('Ask them to copy their address from Mealog’s Memory Mail.', '请对方从 Mealog 的「记忆慢递」里复制信箱地址给你。')}</Text>
-            {recipient !== '' && (!/^[a-f0-9]{64}$/.test(recipient) || recipient === mailbox?.address) && <Text style={styles.error}>
-              {copy('Enter the other person’s 64-character mailbox address.', '请填写对方的 64 位信箱地址。')}
-            </Text>}
+            <Text style={styles.body}>{copy('After sealing, share the link so they can open the letter in a browser.', '封存后分享链接，对方用浏览器就能拆信。')}</Text>
             <Text style={styles.label}>{copy('Sign the letter', '你的署名')}</Text>
             <TextInput accessibilityLabel={copy('Your signature', '你的署名')} placeholder={copy('The name they know you by', '写下对方熟悉的称呼')}
               placeholderTextColor={colors.mutedText} value={senderName} onChangeText={setSenderName} maxLength={60} editable={!saving} style={styles.input} />
@@ -142,7 +134,7 @@ export default function SlowMailComposer({ draft, onClose, onMailbox }: {
                 <Text style={styles.body}>{source.date}</Text>
               </Pressable>;
             })}</View>
-            <Text style={styles.body}>{copy('Sealing uploads this text and the selected originals for delivery. Originals may contain details such as capture time and location.', '封存会上传这段文字和所选原图，以便月底送达。原图可能含拍摄时间和地点。')}</Text>
+            <Text style={styles.body}>{copy('Sealing uploads the letter and original photos, and creates a link you can share. Anyone with the link can open it after delivery. Originals may include capture time and location.', '封存会上传信件和原图，并生成可分享的链接。到期后，持链接的人都可拆信。原图可能含拍摄时间和地点。')}</Text>
             {error != null && <Text accessibilityLiveRegion="polite" style={styles.error}>{slowMailError(error, zh)}</Text>}
             {loading ? <ActivityIndicator color={colors.primary} /> : mailbox ? <>
               <Text style={styles.body}>{copy(`Delivery at ${formatDate(mailbox.releaseAt)} · ${mailbox.remaining} of 3 letters left this month`, `预计 ${formatDate(mailbox.releaseAt)} 送达 · 本月还可寄 ${mailbox.remaining} 封（最多 3 封）`)}</Text>

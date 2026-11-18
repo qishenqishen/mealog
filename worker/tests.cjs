@@ -67,7 +67,7 @@ async function testSlowMail() {
   const form = (recipient, requestId = crypto.randomUUID(), release = releaseAt, photo = photoBytes) => {
     const fields = new FormData();
     const values = { senderName: 'Sender', recipientName: 'Recipient', text: 'The dumplings we made.', month: '2026-10', releaseAt: release, recipient, requestId };
-    for (const [key, value] of Object.entries(values)) fields.set(key, value);
+    for (const [key, value] of Object.entries(values)) if (value !== undefined) fields.set(key, value);
     fields.append('photo', new Blob([photo], { type: 'image/jpeg' }), 'original.jpg');
     return fields;
   };
@@ -129,6 +129,36 @@ async function testSlowMail() {
   large.set([255, 216, 255]);
   assert.equal((await post(form(recipient.address, crypto.randomUUID(), releaseAt, large))).status, 413);
   assert.equal((await send('', senderKey, { method: 'POST', headers: { ...postHeaders, 'Content-Type': 'multipart/form-data; boundary=x' }, body: new Uint8Array(13 * 1024 * 1024) })).status, 413);
+  const guestRequest = crypto.randomUUID();
+  const guestRelease = '2027-01-01T00:00:00.000Z';
+  const guestSubmission = await post(form(undefined, guestRequest, guestRelease));
+  assert.equal(guestSubmission.status, 200);
+  const guestLetter = (await guestSubmission.json()).letter;
+  const guestKey = guestLetter.guestKey;
+  assert.match(guestKey, /^[A-Za-z0-9_-]{32}$/);
+  assert.equal((await read(senderKey)).remaining, 2, 'Guest links count against the regular monthly limit');
+  assert.equal((await read(senderKey)).outgoing.find(item => item.id === guestLetter.id).guestKey, guestKey);
+  assert((await read(recipientKey)).incoming.every(item => !('guestKey' in item)), 'Mailbox recipients receive no guest token');
+  assert.equal((await send('/guest', recipientKey)).status, 404);
+  assert.equal((await send('/' + guestLetter.id + '/photos/0', guestKey)).status, 401, 'Guest keys cannot authenticate to a mailbox');
+  const sealed = await send('/guest', guestKey);
+  assert.equal(sealed.headers.get('Cache-Control'), 'no-store');
+  assert.deepEqual(await sealed.json(), { releaseAt: guestRelease, letter: null });
+  assert.equal((await send('/guest/photos/0', guestKey)).status, 404);
+  now = Date.parse(guestRelease);
+  const guestOpened = await send('/guest', guestKey);
+  const { guestKey: _, ...expectedGuestLetter } = guestLetter;
+  assert.deepEqual(await guestOpened.json(), { releaseAt: guestRelease, letter: expectedGuestLetter });
+  const guestImage = await send('/guest/photos/0', guestKey);
+  assert.equal(guestImage.status, 200);
+  assert.equal(guestImage.headers.get('Cache-Control'), 'no-store');
+  assert.deepEqual(new Uint8Array(await guestImage.arrayBuffer()), photoBytes);
+  assert.equal((await send('/guest/photos/1', guestKey)).status, 404);
+  const wrongKey = (guestKey[0] === 'a' ? 'b' : 'a') + guestKey.slice(1);
+  assert.equal((await send('/guest/photos/0', wrongKey)).status, 404);
+  const guestReplay = await post(form(undefined, guestRequest, guestRelease));
+  assert.deepEqual((await guestReplay.json()).letter, guestLetter, 'Guest link survives retry across the cutoff');
+  assert.equal((await read(senderKey)).remaining, 3);
   storage.db.close();
 }
 
@@ -297,7 +327,7 @@ async function main() {
     await assert.rejects(() => client.generateMonthlyReport(clientInput), (error) => error.code === 'ai_unavailable');
     assert.equal((await client.readReportCache())[0].report.generatedAt, report.generatedAt);
   } finally { global.fetch = fetchOriginal; }
-  console.log('PASS: Insights validation, quota, provider failures and client cache; Slow Mail privacy, cutoff, quota, retries and original bytes');
+  console.log('PASS: Insights validation, quota, provider failures and client cache; Slow Mail mailbox and guest privacy, cutoff, quota, retries and original bytes');
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; });

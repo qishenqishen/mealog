@@ -14,6 +14,7 @@ import { colors } from '../src/theme';
 function AppRoot() {
   const { locale } = useI18n();
   const pathname = usePathname();
+  const guestLetterView = pathname === '/letter';
   const libraryView = pathname === '/archive' || pathname === '/photobook';
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
@@ -38,6 +39,7 @@ function AppRoot() {
   }, []);
 
   useEffect(() => {
+    if (guestLetterView) return;
     let active = true;
     async function prepare() {
       try {
@@ -53,7 +55,7 @@ function AppRoot() {
     }
     void prepare();
     return () => { active = false; };
-  }, [attempt]);
+  }, [attempt, guestLetterView]);
 
   return (
     <View style={[styles.stage, viewportHeight ? { height: viewportHeight, flex: undefined } : undefined]}>
@@ -62,7 +64,7 @@ function AppRoot() {
       ) : null}
       <View style={[styles.app, libraryView && Platform.OS === 'web' && { maxWidth: 1100 }]} testID="mealog-app">
         <StatusBar style="dark" />
-        {ready ? (
+        {ready || guestLetterView ? (
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="onboarding" />
@@ -74,6 +76,7 @@ function AppRoot() {
             <Stack.Screen name="people/index" />
             <Stack.Screen name="profile" />
             <Stack.Screen name="slow-mail" />
+            <Stack.Screen name="letter" />
             <Stack.Screen name="people/[id]" />
           </Stack>
         ) : (

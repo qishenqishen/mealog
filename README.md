@@ -46,7 +46,7 @@ The app does not store the text submitted for AI generation or log request bodie
 
 This public demo allows **50 generation attempts per UTC day across all visitors**, and **3 per network/IP in 10 minutes**. Failed attempts also count. Existing reports and normal recording remain usable when AI is unavailable. No paid-plan upgrade is performed.
 
-Memory Mail stores only the letter and originals you choose to seal. The recipient uses their browser mailbox address, and letters open at the next UTC month boundary. Each mailbox can send three letters per month.
+Memory Mail stores only the letter and originals you choose to seal. Share the sealed letter link with your recipient. They can read it at the next UTC month boundary without opening their own mailbox. Each mailbox can send three letters per month.
 
 ## Want The Source Code?
 

@@ -1,6 +1,8 @@
 import { getManagedMediaById, getManagedOriginalBlob } from '../media/managedMedia';
 import type { MealEntry } from '../types';
 
+export const SLOW_MAIL_GUEST_KEY = /^[A-Za-z0-9_-]{32}$/;
+
 const MAILBOX_KEY = '@mealogue/slowMailKey';
 const API = '/api/slow-mail';
 const PHOTO_LIMIT = 12 * 1024 * 1024;
@@ -14,6 +16,7 @@ export interface SlowLetter {
   month: string;
   releaseAt: string;
   photos: { type: string }[];
+  guestKey?: string;
 }
 
 export interface SlowMailbox {
@@ -39,13 +42,14 @@ async function key(): Promise<string> {
   }
 }
 
-async function request(path = '', body?: FormData): Promise<Response> {
+async function request(path = '', body?: FormData, guestKey?: string): Promise<Response> {
   const response = await fetch(API + path, {
     method: body ? 'POST' : 'GET',
-    headers: { Authorization: 'Bearer ' + await key() },
+    headers: { Authorization: 'Bearer ' + (guestKey ?? await key()) },
     cache: 'no-store',
     credentials: 'omit',
     redirect: 'error',
+    referrerPolicy: 'no-referrer',
     body,
   });
   if (!response.ok) {
@@ -63,8 +67,27 @@ export async function getSlowPhoto(id: string, index: number): Promise<Blob> {
   return (await request('/' + encodeURIComponent(id) + '/photos/' + index)).blob();
 }
 
+export function slowMailGuestUrl(guestKey: string, locale: 'en' | 'zh'): string {
+  const url = new URL('/letter', window.location.origin);
+  url.hash = `${locale}.${guestKey}`;
+  return url.href;
+}
+
+export interface SlowGuestLetter {
+  releaseAt: string;
+  letter: SlowLetter | null;
+}
+
+export async function getSlowGuestLetter(guestKey: string): Promise<SlowGuestLetter> {
+  return (await request('/guest', undefined, guestKey)).json();
+}
+
+export async function getSlowGuestPhoto(guestKey: string, index: number): Promise<Blob> {
+  return (await request('/guest/photos/' + index, undefined, guestKey)).blob();
+}
+
 export async function queueSlowLetter(input: {
-  recipient: string;
+  recipient?: string;
   senderName: string;
   recipientName: string;
   text: string;
@@ -76,7 +99,9 @@ export async function queueSlowLetter(input: {
   const { photos, ...fields } = input;
   if (photos.length < 1 || photos.length > 3) throw new Error('invalid_letter');
   const body = new FormData();
-  for (const [field, value] of Object.entries(fields)) body.set(field, value);
+  for (const [field, value] of Object.entries(fields)) {
+    if (value !== undefined) body.set(field, value);
+  }
   let size = 0;
   for (const photo of photos) {
     const original = await getManagedMediaById(photo.photoMediaId);
@@ -103,7 +128,7 @@ export function slowMailError(error: unknown, zh: boolean): string {
     recipient_not_found: ['找不到这个收信地址。请和对方确认。', 'Mailbox not found. Check the address with your recipient.'],
     self_recipient: ['请填写对方的收信地址。', 'Enter the other person’s mailing address.'],
     monthly_limit: ['本月 3 封信已经寄满。', 'You have used all three letters for this month.'],
-    invalid_letter: ['请检查收信地址、署名、信件内容与照片。', 'Check the address, names, letter, and photos.'],
+    invalid_letter: ['请检查署名、信件内容与照片。', 'Check the names, letter, and photos.'],
     release_changed: ['已进入新的寄送月份，请确认更新后的寄出时间。', 'A new mailing month has begun. Confirm the updated mailing time.'],
     upload_limit: ['今天提交的次数已达上限，请明天再试。', 'You have reached today’s submission limit. Try again tomorrow.'],
     mailbox_capacity: ['慢递信箱的容量已满，请稍后再试。', 'Slow mail has reached its storage limit. Try again later.'],
