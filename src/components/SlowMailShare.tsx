@@ -32,15 +32,15 @@ export default function SlowMailShare({ guestKey }: { guestKey: string }) {
   }
 
   return <View style={styles.panel}>
-    <Text style={styles.body}>{zh ? '把链接发给收信人。到期后，持链接的人都可以拆信。' : 'Send the link to your recipient. Anyone with it can open the letter after delivery.'}</Text>
     <View style={styles.actions}>
       {canShare && <Pressable accessibilityRole="button" style={[styles.button, styles.primary]} onPress={() => void share()}>
-        <Text style={styles.label}>{zh ? '分享信件链接' : 'Share letter link'}</Text>
+        <Text style={[styles.label, styles.primaryLabel]}>{zh ? '分享信件链接' : 'Share letter link'}</Text>
       </Pressable>}
       <Pressable accessibilityRole="button" style={[styles.button, !canShare && styles.primary]} onPress={() => void copy()}>
-        <Text style={styles.label}>{zh ? '复制信件链接' : 'Copy letter link'}</Text>
+        <Text style={[styles.label, !canShare && styles.primaryLabel]}>{zh ? '复制信件链接' : 'Copy letter link'}</Text>
       </Pressable>
     </View>
+    <Text style={styles.body}>{zh ? '把链接发给收信人。到期后，持链接的人都可以拆信。' : 'Send the link to your recipient. Anyone with it can open the letter after delivery.'}</Text>
     {status === 'copied' && <Text accessibilityLiveRegion="polite" style={styles.body}>{zh ? '链接已复制' : 'Letter link copied'}</Text>}
     {status === 'share-failed' && <Text accessibilityLiveRegion="polite" style={styles.body}>{zh ? '请复制链接后分享。' : 'Copy the link to share it.'}</Text>}
     {status === 'manual' && <>
@@ -51,11 +51,12 @@ export default function SlowMailShare({ guestKey }: { guestKey: string }) {
 }
 
 const styles = StyleSheet.create({
-  panel: { gap: 8, padding: 12, borderRadius: 8, backgroundColor: colors.accentSoft },
+  panel: { gap: 9 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   body: { color: colors.mutedText, fontFamily: fonts.body, fontSize: 13, lineHeight: 20 },
-  label: { color: colors.primary, fontFamily: fonts.body, fontSize: 14 },
-  button: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  primary: { backgroundColor: colors.accent, borderColor: colors.primary },
+  label: { color: colors.primary, fontFamily: fonts.body, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  button: { flexGrow: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderRadius: 4, borderColor: '#CFC7B5', backgroundColor: colors.surface },
+  primary: { backgroundColor: '#414737', borderColor: '#414737' },
+  primaryLabel: { color: colors.surface },
   link: { color: colors.text, fontFamily: fonts.body, fontSize: 13, lineHeight: 20 },
 });
