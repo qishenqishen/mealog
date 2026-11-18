@@ -1,10 +1,12 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { useI18n } from '../src/i18n';
 import { getSlowMailbox, slowMailError, type SlowLetter, type SlowMailbox } from '../src/product/slowMail';
+import { DEFAULT_SLOW_MAIL_STATIONERY } from '../src/product/slowMailStationery';
 import SlowLetterPaper, { formatSlowMailDate } from '../src/components/SlowLetterPaper';
+import SlowMailEnvelope, { prefersReducedMailMotion, slowMailEnvelopeColor, SLOW_MAIL_OPENING_MS } from '../src/components/SlowMailEnvelope';
 import SlowMailShare from '../src/components/SlowMailShare';
 import { colors, fonts } from '../src/theme';
 
@@ -19,6 +21,7 @@ export default function SlowMailScreen() {
   const [mailbox, setMailbox] = useState<SlowMailbox>();
   const [box, setBox] = useState<'incoming' | 'outgoing'>('incoming');
   const [opened, setOpened] = useState<string>();
+  const [opening, setOpening] = useState(false);
   const [error, setError] = useState<unknown>();
   const [retry, setRetry] = useState(0);
   const scroll = useRef<ScrollView>(null);
@@ -63,8 +66,15 @@ export default function SlowMailScreen() {
   const letter = letters.find(item => item.id === opened);
   const outgoing = box === 'outgoing';
 
+  useEffect(() => {
+    if (!opening) return;
+    const timer = setTimeout(() => setOpening(false), SLOW_MAIL_OPENING_MS);
+    return () => clearTimeout(timer);
+  }, [opening]);
+
   function back() {
     if (letter) {
+      setOpening(false);
       setOpened(undefined);
       scroll.current?.scrollTo({ y: 0, animated: false });
     } else if (router.canGoBack()) router.back();
@@ -88,12 +98,13 @@ export default function SlowMailScreen() {
         </Pressable>}
       </View>
       <View style={styles.intro}>
-        <Text accessibilityRole="header" style={styles.title}>{letter
+        <Text accessibilityRole="header" style={styles.title}>{opening ? copy('Opening your letter…', '正在拆信…') : letter
           ? outgoing ? copy('Sent letter', '寄出的信') : copy('A memory letter', '一封记忆来信')
           : copy('Memory Mail', '记忆慢递')}</Text>
         {!letter && Platform.OS === 'web' && <Text style={styles.body}>{copy('Turn a shared meal into a letter. Seal it, share the link, and they can open it at month’s end.', '把一起吃过的饭写成信。封存后分享链接，对方月底就能拆信。')}</Text>}
       </View>
       {Platform.OS !== 'web' ? <Text style={styles.body}>{copy('Open Mealog in your browser to use slow mail.', '请在浏览器打开 Mealog，使用记忆慢递。')}</Text> :
+        letter && opening ? <SlowMailEnvelope stationery={letter.stationery ?? DEFAULT_SLOW_MAIL_STATIONERY} opening /> :
         letter ? <View style={styles.detail}>
           <SlowLetterPaper letter={letter} status={stamp(letter)} />
           {outgoing && letter.guestKey && <SlowMailShare guestKey={letter.guestKey} />}
@@ -136,10 +147,16 @@ export default function SlowMailScreen() {
               key={item.id}
               accessibilityRole="button"
               accessibilityLabel={outgoing ? copy(`Read letter to ${item.recipientName} · ${index + 1}`, `打开寄给 ${item.recipientName} 的信 · ${index + 1}`) : copy(`Open letter from ${item.senderName} · ${index + 1}`, `开信：${item.senderName} · ${index + 1}`)}
-              onPress={() => { setOpened(item.id); scroll.current?.scrollTo({ y: 0, animated: false }); }}
+              onPress={() => {
+                setOpening(!outgoing && !prefersReducedMailMotion());
+                setOpened(item.id);
+                scroll.current?.scrollTo({ y: 0, animated: false });
+              }}
               style={({ pressed }) => [styles.envelope, pressed && styles.pressed]}
             >
-              <Image accessible={false} aria-hidden source={require('../assets/keepsakes/pastel-v1/monthly-letter.png')} style={styles.envelopeArt} resizeMode="contain" />
+              {item.stationery
+                ? <View aria-hidden style={[styles.envelopeSwatch, { backgroundColor: slowMailEnvelopeColor(item.stationery.envelope) }]}><View style={styles.envelopeCrease} /></View>
+                : <Image accessible={false} aria-hidden source={require('../assets/keepsakes/pastel-v1/monthly-letter.png')} style={styles.envelopeArt} resizeMode="contain" />}
               <View style={styles.letterMeta}>
                 <Text style={styles.heading}>{outgoing ? copy(`To ${item.recipientName}`, `寄给 ${item.recipientName}`) : copy(`From ${item.senderName}`, `${item.senderName} 的来信`)}</Text>
                 <Text style={styles.meta}>{formatSlowMailDate(item.releaseAt, zh)}</Text>
@@ -183,6 +200,8 @@ const styles = StyleSheet.create({
   envelope: { flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: colors.surface, borderRadius: 4, borderWidth: 1, borderColor: crease, padding: 14 },
   pressed: { backgroundColor: lining },
   envelopeArt: { width: 46, height: 46 },
+  envelopeSwatch: { width: 46, height: 30, borderRadius: 3, borderWidth: 1, borderColor: crease, overflow: 'hidden' },
+  envelopeCrease: { position: 'absolute', width: 33, height: 33, top: -16, left: 5, borderBottomWidth: 1, borderRightWidth: 1, borderColor: '#7167506B', transform: [{ rotate: '45deg' }] },
   letterMeta: { flex: 1, minWidth: 0, gap: 2 },
   stamp: { color: ink, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, fontWeight: '600', marginTop: 3 },
   chevron: { width: 6, height: 6, borderTopWidth: 1, borderRightWidth: 1, borderColor: ink, transform: [{ rotate: '45deg' }] },

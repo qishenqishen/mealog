@@ -15,10 +15,11 @@ const output = process.env.QA_OUTPUT || 'artifacts/slow-mail';
 await mkdir(output, { recursive: true });
 const fixtures = await Promise.all(['blueberry-toast.jpg', 'sushi-set.jpg'].map(file => readFile(new URL(`../assets/demo/meal-photos/${file}`, import.meta.url))));
 const browser = await chromium.launch({ channel: process.env.CHROME_CHANNEL || 'chrome', headless: true });
-const options = { viewport: { width: 390, height: 844 }, locale: 'en-US' };
+const options = { viewport: { width: 390, height: 844 }, locale: 'en-US', reducedMotion: 'no-preference' };
 const open = (page, path) => page.goto(new URL(path, base).href);
 const signature = 'Taylor QA';
 const memory = 'Jamie and I saved the last bite on both days.';
+const stationery = { envelope: 'clay', paper: 'sage', stamp: 'flower' };
 try {
   const senderContext = await browser.newContext(options);
   await senderContext.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.origin });
@@ -68,6 +69,15 @@ try {
   await expect(seal).toBeDisabled();
   await sender.getByRole('checkbox', { name: 'Include original photo from Sushi lunch' }).click();
   await expect(seal).toBeEnabled();
+  const chooseStationery = sender.getByRole('button', { name: 'Choose envelope, paper and stamp' });
+  await chooseStationery.click();
+  for (const name of ['Clay', 'Moss', 'Flower']) {
+    const choice = sender.getByRole('radio', { name, exact: true });
+    await choice.click();
+    await expect(choice).toBeChecked();
+  }
+  await sender.screenshot({ path: `${output}/stationery-picker-mobile.png`, animations: 'disabled' });
+  await chooseStationery.click();
   await sender.screenshot({ path: `${output}/composer-mobile.png`, animations: 'disabled' });
   const submitted = sender.waitForResponse(response => new URL(response.url()).pathname === '/api/slow-mail' && response.request().method() === 'POST');
   await seal.click();
@@ -77,6 +87,7 @@ try {
   assert.match(letter.guestKey, /^[A-Za-z0-9_-]{32}$/);
   assert.equal(letter.photos.length, 1);
   assert.equal(letter.text, memory);
+  assert.deepEqual(letter.stationery, stationery);
   const senderKey = await sender.evaluate(() => localStorage.getItem('@mealogue/slowMailKey'));
   const original = await senderContext.request.get(new URL(`/api/slow-mail/${letter.id}/photos/0`, base).href, { headers: { Authorization: `Bearer ${senderKey}` } });
   assert(original.ok());
@@ -107,16 +118,21 @@ try {
   assert(waiting.ok(), await waiting.text());
   assert.equal(await waiting.request().headerValue('authorization'), `Bearer ${letter.guestKey}`);
   assert.equal(waiting.url(), new URL('/api/slow-mail/guest', base).href);
-  assert.deepEqual(await waiting.json(), { releaseAt: letter.releaseAt, letter: null });
+  const sealedGuest = { releaseAt: letter.releaseAt, letter: null, stationery };
+  assert.deepEqual(await waiting.json(), sealedGuest);
   await expect(receiver.getByRole('heading', { name: 'A letter is waiting for you' })).toBeVisible();
   await expect(receiver.getByText(memory, { exact: true })).toHaveCount(0);
+  const openLetter = receiver.getByRole('button', { name: 'Open this letter', exact: true });
+  await expect(openLetter).toHaveCount(0);
+  await expect(receiver.locator('.mm-envelope-scene')).toHaveCSS('--mm-front', '#DBB19A');
+  await expect(receiver.locator('.mm-wax-flower')).toBeVisible();
   assert.deepEqual(await receiver.evaluate(() => ['slowMailKey', 'userIdentity', 'standaloneDemoSession']
     .map(key => localStorage.getItem('@mealogue/' + key))), [null, null, null]);
   assert.equal(new URL(receiver.url()).hash.length, 36, 'The invitation fragment must survive the initial route load');
   await receiver.screenshot({ path: `${output}/guest-waiting-mobile.png` });
   const reopen = receiver.waitForResponse(response => new URL(response.url()).pathname === '/api/slow-mail/guest');
   await receiver.reload();
-  assert.deepEqual(await (await reopen).json(), { releaseAt: letter.releaseAt, letter: null });
+  assert.deepEqual(await (await reopen).json(), sealedGuest);
   await expect(receiver.getByRole('heading', { name: 'A letter is waiting for you' })).toBeVisible();
   await open(receiver, `/letter#zh.${letter.guestKey}`);
   await expect(receiver.getByRole('heading', { name: '有一封信留给你' })).toBeVisible();
@@ -127,10 +143,25 @@ try {
 
   // The Worker suite checks the real release boundary. Simulate its released response for the reader UI.
   const { guestKey, ...releasedLetter } = letter;
+  let photoRequests = 0;
   await receiver.route('**/api/slow-mail/guest', route => route.fulfill({ json: { releaseAt: letter.releaseAt, letter: releasedLetter } }));
-  await receiver.route('**/api/slow-mail/guest/photos/0', route => route.fulfill({ contentType: 'image/jpeg', body: fixtures[1] }));
+  await receiver.route('**/api/slow-mail/guest/photos/0', route => {
+    photoRequests++;
+    return route.fulfill({ contentType: 'image/jpeg', body: fixtures[1] });
+  });
   await open(receiver, sharedLink);
   await receiver.reload();
+  await expect(openLetter).toBeVisible();
+  await expect(receiver.getByText(memory, { exact: true })).toHaveCount(0);
+  assert.equal(photoRequests, 0);
+  const opening = receiver.locator('.mm-envelope-shape[data-opening="true"]');
+  await openLetter.click();
+  await expect(opening).toBeVisible();
+  await expect(opening.locator('.mm-envelope-flap')).toHaveCSS('animation-name', 'mm-lift-flap');
+  await expect(opening.locator('.mm-envelope-insert')).toHaveCSS('animation-name', 'mm-draw-paper');
+  assert.equal(await receiver.getByText(memory, { exact: true }).count(), 0);
+  assert.equal(photoRequests, 0);
+  await receiver.screenshot({ path: `${output}/guest-opening-mobile.png` });
   await expect(receiver.getByRole('heading', { name: 'A memory letter' })).toBeVisible();
   await expect(receiver.getByText(memory, { exact: true })).toBeVisible();
   const receivedPhoto = receiver.getByRole('img', { name: 'Original photo 1' });
@@ -138,12 +169,19 @@ try {
   await expect.poll(() => receiver.locator('img').evaluateAll(images => images.some(image => image.complete && image.naturalWidth > 0 && image.src.startsWith('blob:')))).toBe(true);
   await receiver.screenshot({ path: `${output}/guest-released-mobile.png` });
 
+  await receiver.emulateMedia({ reducedMotion: 'reduce' });
+  await receiver.reload();
+  await expect(openLetter).toBeVisible();
+  await openLetter.click();
+  assert.equal(await opening.count(), 0, 'Reduced motion opens the letter without starting the envelope animation');
+  await expect(receiver.getByText(memory, { exact: true })).toBeVisible();
+
   await open(sender, '/insights?slowMail=1&personId=jamie&date=2025-06-15');
   await expect(anchor).toHaveValue('2025-06-15');
   await expect(sender.getByText('2025-06-01 — 2025-06-30', { exact: true })).toBeVisible();
   await anchor.fill(recordedDate);
   await expect(sender.getByText('2 moments', { exact: true })).toBeVisible();
-  console.log('PASS person/month link, shared-only draft, mobile composer, original bytes, quota, copied guest link, sealed access, released reader');
+  console.log('PASS person/month link, shared-only draft, mobile stationery, original bytes, quota, copied guest link, sealed access, opening animation and reduced motion');
 } finally {
   await browser.close();
 }

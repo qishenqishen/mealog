@@ -64,9 +64,10 @@ async function testSlowMail() {
   const read = async (auth) => (await send('', auth)).json();
   const photoBytes = new Uint8Array(1024 * 1024 + 7).fill(127);
   photoBytes.set([255, 216, 255]);
-  const form = (recipient, requestId = crypto.randomUUID(), release = releaseAt, photo = photoBytes) => {
+  const selectedStationery = { envelope: 'sage', paper: 'cream', stamp: 'bread' };
+  const form = (recipient, requestId = crypto.randomUUID(), release = releaseAt, photo = photoBytes, stationery) => {
     const fields = new FormData();
-    const values = { senderName: 'Sender', recipientName: 'Recipient', text: 'The dumplings we made.', month: '2026-10', releaseAt: release, recipient, requestId };
+    const values = { senderName: 'Sender', recipientName: 'Recipient', text: 'The dumplings we made.', month: '2026-10', releaseAt: release, recipient, requestId, stationery };
     for (const [key, value] of Object.entries(values)) if (value !== undefined) fields.set(key, value);
     fields.append('photo', new Blob([photo], { type: 'image/jpeg' }), 'original.jpg');
     return fields;
@@ -83,22 +84,31 @@ async function testSlowMail() {
   assert.equal((await post(form('d'.repeat(64)))).status, 404);
   assert.equal((await post(form(recipient.address, crypto.randomUUID(), '2026-11-01T00:00:00.000Z'))).status, 409);
   assert.equal((await post(form(recipient.address, crypto.randomUUID(), releaseAt, new Uint8Array([0, 0, 0])))).status, 415);
+  for (const invalid of ['{broken', JSON.stringify({ ...selectedStationery, envelope: 'unknown' }), JSON.stringify({ ...selectedStationery, note: 'private' })]) {
+    assert.equal((await post(form(undefined, undefined, releaseAt, photoBytes, invalid))).status, 400);
+  }
   const exec = storage.sql.exec;
   storage.sql.exec = (query, ...args) => {
     if (query.startsWith('INSERT INTO mail_photo_chunks') && args[2] === 1) throw new Error('write interrupted');
     return exec(query, ...args);
   };
-  assert.equal((await post(form(recipient.address))).status, 503);
+  assert.equal((await post(form(recipient.address, undefined, releaseAt, photoBytes, JSON.stringify(selectedStationery)))).status, 503);
   storage.sql.exec = exec;
   assert.equal((await read(senderKey)).remaining, 3);
   assert.equal((await read(senderKey)).outgoing.length, 0);
   assert.equal(storage.sql.exec('SELECT COUNT(*) AS count FROM mail_photo_chunks').one().count, 0);
+  assert.equal(storage.sql.exec('SELECT COUNT(*) AS count FROM letter_stationery').one().count, 0);
   const requestId = crypto.randomUUID();
   const initial = await post(form(recipient.address, requestId));
   assert.equal(initial.status, 200);
   const { letter } = await initial.json();
   assert.equal(letter.releaseAt, releaseAt);
   assert.equal(letter.month, '2026-10');
+  assert.equal('stationery' in letter, false, 'Letters mailed without custom stationery retain their response shape');
+  storage.db.exec('DROP TABLE letter_stationery');
+  initializeMail(storage.sql);
+  initializeMail(storage.sql);
+  assert.deepEqual((await read(senderKey)).outgoing[0], letter, 'Adding stationery leaves an existing letter intact');
   const photoPath = `/${letter.id}/photos/0`;
   assert.equal((await read(senderKey)).outgoing.length, 1);
   assert.equal((await read(recipientKey)).incoming.length, 0);
@@ -131,19 +141,20 @@ async function testSlowMail() {
   assert.equal((await send('', senderKey, { method: 'POST', headers: { ...postHeaders, 'Content-Type': 'multipart/form-data; boundary=x' }, body: new Uint8Array(13 * 1024 * 1024) })).status, 413);
   const guestRequest = crypto.randomUUID();
   const guestRelease = '2027-01-01T00:00:00.000Z';
-  const guestSubmission = await post(form(undefined, guestRequest, guestRelease));
+  const guestSubmission = await post(form(undefined, guestRequest, guestRelease, photoBytes, JSON.stringify(selectedStationery)));
   assert.equal(guestSubmission.status, 200);
   const guestLetter = (await guestSubmission.json()).letter;
   const guestKey = guestLetter.guestKey;
   assert.match(guestKey, /^[A-Za-z0-9_-]{32}$/);
+  assert.deepEqual(guestLetter.stationery, selectedStationery);
   assert.equal((await read(senderKey)).remaining, 2, 'Guest links count against the regular monthly limit');
-  assert.equal((await read(senderKey)).outgoing.find(item => item.id === guestLetter.id).guestKey, guestKey);
+  assert.deepEqual((await read(senderKey)).outgoing.find(item => item.id === guestLetter.id), guestLetter);
   assert((await read(recipientKey)).incoming.every(item => !('guestKey' in item)), 'Mailbox recipients receive no guest token');
   assert.equal((await send('/guest', recipientKey)).status, 404);
   assert.equal((await send('/' + guestLetter.id + '/photos/0', guestKey)).status, 401, 'Guest keys cannot authenticate to a mailbox');
   const sealed = await send('/guest', guestKey);
   assert.equal(sealed.headers.get('Cache-Control'), 'no-store');
-  assert.deepEqual(await sealed.json(), { releaseAt: guestRelease, letter: null });
+  assert.deepEqual(await sealed.json(), { releaseAt: guestRelease, letter: null, stationery: selectedStationery });
   assert.equal((await send('/guest/photos/0', guestKey)).status, 404);
   now = Date.parse(guestRelease);
   const guestOpened = await send('/guest', guestKey);

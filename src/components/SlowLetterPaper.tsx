@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useI18n } from '../i18n';
 import { getSlowGuestPhoto, getSlowPhoto, type SlowLetter } from '../product/slowMail';
+import { DEFAULT_SLOW_MAIL_STATIONERY } from '../product/slowMailStationery';
 import { colors, fonts } from '../theme';
+import { slowMailPaperColor } from './SlowMailEnvelope';
 
 export function formatSlowMailDate(value: string, zh: boolean) {
   return new Intl.DateTimeFormat(zh ? 'zh-CN' : 'en-US', {
@@ -53,7 +55,8 @@ export default function SlowLetterPaper({ letter, status, guestKey, zh: language
 }) {
   const { locale } = useI18n();
   const zh = language ?? locale === 'zh';
-  return <View style={styles.paper}>
+  const paper = letter.stationery?.paper ?? DEFAULT_SLOW_MAIL_STATIONERY.paper;
+  return <View style={[styles.paper, { backgroundColor: slowMailPaperColor(paper) }]}>
     <View style={styles.letterhead}>
       <View style={styles.letterMeta}>
         <Text style={styles.meta}>{letter.month} · {zh ? '共同记忆' : 'Shared memory'}</Text>
@@ -74,7 +77,7 @@ export default function SlowLetterPaper({ letter, status, guestKey, zh: language
 }
 
 const styles = StyleSheet.create({
-  paper: { backgroundColor: '#FFFCF3', borderRadius: 3, borderWidth: 1, borderColor: '#D9D0BE', padding: 20, gap: 18 },
+  paper: { borderRadius: 3, borderWidth: 1, borderColor: '#D9D0BE', padding: 20, gap: 18 },
   letterhead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingBottom: 13, borderBottomWidth: 1, borderColor: '#E3DAC8' },
   letterMeta: { flex: 1, minWidth: 0, gap: 5 },
   salutation: { fontFamily: fonts.editorial, fontSize: 26, lineHeight: 34, color: colors.primary },

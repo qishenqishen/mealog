@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SlowLetterPaper from '../src/components/SlowLetterPaper';
+import SlowMailEnvelope, { prefersReducedMailMotion, SLOW_MAIL_OPENING_MS } from '../src/components/SlowMailEnvelope';
 import { getSlowGuestLetter, SLOW_MAIL_GUEST_KEY, type SlowGuestLetter } from '../src/product/slowMail';
+import { DEFAULT_SLOW_MAIL_STATIONERY } from '../src/product/slowMailStationery';
 import { useI18n } from '../src/i18n';
 import { colors, fonts } from '../src/theme';
 
@@ -59,8 +61,6 @@ export default function GuestLetterScreen() {
   }, [guestKey, retry]);
 
   const missing = !guestKey || failure === 'not_found';
-  const release = result && new Date(result.releaseAt);
-  const dateLocale = zh ? 'zh-CN' : 'en-US';
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
     <ScrollView contentContainerStyle={styles.page}>
       <View style={styles.header}>
@@ -75,23 +75,73 @@ export default function GuestLetterScreen() {
         <Pressable accessibilityRole="button" style={styles.retry} onPress={() => { setState(undefined); setRetry(value => value + 1); }}>
           <Text style={styles.body}>{zh ? '重试' : 'Try again'}</Text>
         </Pressable>
-      </View> : !result ? <ActivityIndicator accessibilityLabel={zh ? '正在读信' : 'Loading letter'} color={colors.secondary} /> : result.letter ? <>
-        <Text accessibilityRole="header" style={styles.openTitle}>{zh ? '一封记忆来信' : 'A memory letter'}</Text>
-        <SlowLetterPaper letter={result.letter} guestKey={guestKey} zh={zh} />
-      </> : <View style={styles.waiting}>
-        <View aria-hidden style={styles.envelope}>
-          <Image source={require('../assets/keepsakes/pastel-v1/monthly-letter.png')} resizeMode="contain" style={styles.illustration} />
-        </View>
-        <Text accessibilityRole="header" style={styles.title}>{zh ? '有一封信留给你' : 'A letter is waiting for you'}</Text>
-        {release && <View style={styles.schedule}>
-          <Text style={styles.sectionName}>{zh ? '拆信时间 · 当地时间' : 'Opens at · Local time'}</Text>
-          <Text style={styles.date}>{release.toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' })}</Text>
-          <Text style={styles.body}>{release.toLocaleTimeString(dateLocale, { hour: 'numeric', minute: '2-digit' })}</Text>
-        </View>}
-        <Text style={[styles.body, styles.hint]}>{zh ? '留好这条链接，到时间再回来拆信。' : 'Keep this link and come back when it’s time to open your letter.'}</Text>
-      </View>}
+      </View> : result
+        ? <GuestEnvelope key={guestKey} result={result} guestKey={guestKey} zh={zh} />
+        : <ActivityIndicator accessibilityLabel={zh ? '正在读信' : 'Loading letter'} color={colors.secondary} />}
     </ScrollView>
   </SafeAreaView>;
+}
+
+function GuestEnvelope({ result, guestKey, zh }: { result: SlowGuestLetter; guestKey: string; zh: boolean }) {
+  const [stage, setStage] = useState<'sealed' | 'opening' | 'opened'>('sealed');
+  const title = useRef<View>(null);
+  const { letter } = result;
+  const opening = stage === 'opening';
+  const opened = stage === 'opened' && letter !== null;
+
+  useEffect(() => {
+    if (!opening) return;
+    const timer = setTimeout(() => setStage('opened'), SLOW_MAIL_OPENING_MS);
+    return () => clearTimeout(timer);
+  }, [opening]);
+
+  useEffect(() => {
+    if (opened) title.current?.focus();
+  }, [opened]);
+
+  if (opened) return <div className="mm-letter-revealed">
+    <style>{`
+      .mm-letter-revealed{display:flex;flex-direction:column;gap:20px;}
+      @media(prefers-reduced-motion:no-preference){
+        .mm-letter-revealed{animation:mm-reveal-letter 260ms ease-out both;}
+        @keyframes mm-reveal-letter{from{opacity:.35;transform:translateY(12px)}to{opacity:1;transform:none}}
+      }
+    `}</style>
+    <View ref={title} tabIndex={-1} accessibilityRole="header">
+      <Text style={styles.openTitle}>{zh ? '一封记忆来信' : 'A memory letter'}</Text>
+    </View>
+    <SlowLetterPaper letter={letter} guestKey={guestKey} zh={zh} />
+  </div>;
+
+  const stationery = letter?.stationery ?? result.stationery ?? DEFAULT_SLOW_MAIL_STATIONERY;
+  const release = new Date(result.releaseAt);
+  const dateLocale = zh ? 'zh-CN' : 'en-US';
+  return <View style={styles.waiting}>
+    <View aria-hidden style={styles.envelope}>
+      <SlowMailEnvelope stationery={stationery} opening={opening} />
+    </View>
+    <Text accessibilityRole="header" accessibilityLiveRegion="polite" style={styles.title}>{letter
+      ? zh ? '现在可以拆信了' : 'It’s time to open your letter'
+      : zh ? '有一封信留给你' : 'A letter is waiting for you'}</Text>
+    {letter ? <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ busy: opening, disabled: opening }}
+      disabled={opening}
+      onPress={() => setStage(prefersReducedMailMotion() ? 'opened' : 'opening')}
+      style={({ pressed }) => [styles.openButton, pressed && styles.openPressed]}
+    >
+      <Text style={styles.openButtonText}>{opening
+        ? zh ? '正在拆信…' : 'Opening…'
+        : zh ? '拆开这封信' : 'Open this letter'}</Text>
+    </Pressable> : <>
+      <View style={styles.schedule}>
+        <Text style={styles.sectionName}>{zh ? '拆信时间 · 当地时间' : 'Opens at · Local time'}</Text>
+        <Text style={styles.date}>{release.toLocaleDateString(dateLocale, { year: 'numeric', month: 'long', day: 'numeric' })}</Text>
+        <Text style={styles.body}>{release.toLocaleTimeString(dateLocale, { hour: 'numeric', minute: '2-digit' })}</Text>
+      </View>
+      <Text style={[styles.body, styles.hint]}>{zh ? '留好这条链接，到时间再回来拆信。' : 'Keep this link and come back when it’s time to open your letter.'}</Text>
+    </>}
+  </View>;
 }
 
 const styles = StyleSheet.create({
@@ -101,10 +151,12 @@ const styles = StyleSheet.create({
   brand: { width: 102, height: 32 },
   sectionName: { fontFamily: fonts.body, fontSize: 12, lineHeight: 18, letterSpacing: 0.7, color: '#515845' },
   waiting: { alignItems: 'center' },
-  envelope: { width: '100%', aspectRatio: 1.7, justifyContent: 'center', alignItems: 'center', backgroundColor: '#EEEBDC', borderWidth: 1, borderColor: '#DED7C6', borderRadius: 3, overflow: 'hidden', marginBottom: 22 },
-  illustration: { width: '76%', height: '126%' },
+  envelope: { width: '100%', alignItems: 'center', marginBottom: 20 },
   title: { fontFamily: fonts.editorial, fontSize: 29, lineHeight: 37, color: colors.primary, textAlign: 'center' },
   openTitle: { fontFamily: fonts.editorial, fontSize: 24, lineHeight: 32, color: colors.primary },
+  openButton: { minHeight: 48, marginTop: 20, paddingHorizontal: 28, justifyContent: 'center', alignItems: 'center', borderRadius: 4, backgroundColor: '#414737' },
+  openPressed: { backgroundColor: '#525945' },
+  openButtonText: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.surface },
   schedule: { width: '100%', alignItems: 'center', gap: 4, paddingVertical: 14, marginTop: 18, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#D9D0BE' },
   date: { fontFamily: fonts.editorial, fontSize: 23, lineHeight: 32, color: colors.primary, textAlign: 'center' },
   body: { fontFamily: fonts.body, fontSize: 14, lineHeight: 22, color: colors.secondary },

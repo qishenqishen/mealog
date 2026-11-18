@@ -1,4 +1,5 @@
 import { json } from './handler';
+import { parseSlowMailStationery, type SlowMailStationery } from '../src/product/slowMailStationery';
 
 const ADDRESS = /^[a-f0-9]{64}$/;
 const GUEST_PATH = /^\/api\/slow-mail\/guest(?:\/photos\/([0-2]))?$/;
@@ -8,7 +9,7 @@ const MONTHLY_LIMIT = 3;
 const PHOTO_LIMIT = 12 * 1024 * 1024;
 const BODY_LIMIT = PHOTO_LIMIT + 64 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
-const FIELDS = ['recipient', 'senderName', 'recipientName', 'text', 'month', 'requestId', 'releaseAt'];
+const FIELDS = ['recipient', 'senderName', 'recipientName', 'text', 'month', 'requestId', 'releaseAt', 'stationery'];
 
 type MailStorage = Pick<DurableObjectStorage, 'sql' | 'transactionSync'>;
 type Letter = {
@@ -20,10 +21,12 @@ type Letter = {
   releaseAt: string;
   photos: { type: string }[];
   guestKey?: string;
+  stationery?: SlowMailStationery;
 };
-type LetterRow = Omit<Letter, 'releaseAt' | 'photos'> & { releaseAt: number; photos: string };
-const LETTER_COLUMNS = 'id, senderName, recipientName, text, month, releaseAt, photos';
-const SENT_LETTERS = `SELECT ${LETTER_COLUMNS}, guest_letters.key AS guestKey FROM letters
+type LetterRow = Omit<Letter, 'releaseAt' | 'photos' | 'stationery'> & { releaseAt: number; photos: string; stationery: string | null };
+const LETTER_COLUMNS = 'id, senderName, recipientName, text, month, releaseAt, photos, stationery';
+const LETTER_SOURCE = 'FROM letters LEFT JOIN letter_stationery ON letter_stationery.letterId = letters.id';
+const SENT_LETTERS = `SELECT ${LETTER_COLUMNS}, guest_letters.key AS guestKey ${LETTER_SOURCE}
   LEFT JOIN guest_letters ON guest_letters.letterId = letters.id`;
 
 class MailError extends Error {
@@ -39,6 +42,9 @@ export function initializeMail(sql: SqlStorage) {
   )`);
   sql.exec(`CREATE TABLE IF NOT EXISTS guest_letters (
     letterId TEXT PRIMARY KEY REFERENCES letters(id), key TEXT NOT NULL UNIQUE
+  )`);
+  sql.exec(`CREATE TABLE IF NOT EXISTS letter_stationery (
+    letterId TEXT PRIMARY KEY REFERENCES letters(id), stationery TEXT NOT NULL
   )`);
   sql.exec('CREATE INDEX IF NOT EXISTS mail_sender_release ON letters (sender, releaseAt)');
   sql.exec('CREATE INDEX IF NOT EXISTS mail_recipient_release ON letters (recipient, releaseAt)');
@@ -63,13 +69,21 @@ function monthEnd(now: number) {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1);
 }
 
+function decodeStationery(encoded: string | null) {
+  if (!encoded) return undefined;
+  try { return parseSlowMailStationery(JSON.parse(encoded)); }
+  catch { return undefined; }
+}
+
 function letterView(row: LetterRow): Letter {
-  const { guestKey, ...letter } = row;
+  const { guestKey, stationery: encodedStationery, ...letter } = row;
+  const stationery = decodeStationery(encodedStationery);
   return {
     ...letter,
     releaseAt: new Date(row.releaseAt).toISOString(),
     photos: JSON.parse(row.photos) as Letter['photos'],
     ...(guestKey ? { guestKey } : {}),
+    ...(stationery ? { stationery } : {}),
   };
 }
 
@@ -97,14 +111,17 @@ function openGuestLetter(request: Request, sql: SqlStorage, now: number, photoIn
   if (request.method !== 'GET') return json({ error: { code: 'method_not_allowed' } }, 405, { Allow: 'GET' });
   const key = request.headers.get('Authorization')?.match(/^Bearer ([A-Za-z0-9_-]{32})$/)?.[1];
   if (!key) throw new MailError('not_found', 404);
-  const row = sql.exec<LetterRow>(`SELECT ${LETTER_COLUMNS} FROM letters
+  const row = sql.exec<LetterRow>(`SELECT ${LETTER_COLUMNS} ${LETTER_SOURCE}
     JOIN guest_letters ON guest_letters.letterId = letters.id WHERE guest_letters.key = ?`, key).toArray()[0];
   if (!row) throw new MailError('not_found', 404);
   if (photoIndex !== undefined) {
     if (row.releaseAt > now) throw new MailError('not_found', 404);
     return letterPhoto(sql, row.id, Number(photoIndex), JSON.parse(row.photos) as Letter['photos']);
   }
-  return json({ releaseAt: new Date(row.releaseAt).toISOString(), letter: row.releaseAt <= now ? letterView(row) : null });
+  const releaseAt = new Date(row.releaseAt).toISOString();
+  if (row.releaseAt <= now) return json({ releaseAt, letter: letterView(row) });
+  const stationery = decodeStationery(row.stationery);
+  return json({ releaseAt, letter: null, ...(stationery ? { stationery } : {}) });
 }
 
 function remaining(sql: SqlStorage, address: string, releaseAt: number) {
@@ -224,7 +241,7 @@ export async function handleSlowMail(request: Request, storage: MailStorage, clo
       }
       const now = clock();
       const releaseAt = monthEnd(now);
-      const incoming = sql.exec<LetterRow>(`SELECT ${LETTER_COLUMNS} FROM letters WHERE recipient = ? AND releaseAt <= ? ORDER BY releaseAt DESC, rowid DESC`, address, now);
+      const incoming = sql.exec<LetterRow>(`SELECT ${LETTER_COLUMNS} ${LETTER_SOURCE} WHERE recipient = ? AND releaseAt <= ? ORDER BY releaseAt DESC, letters.rowid DESC`, address, now);
       const outgoing = sql.exec<LetterRow>(`${SENT_LETTERS} WHERE sender = ? ORDER BY releaseAt DESC, letters.rowid DESC`, address);
       return json({ address, remaining: remaining(sql, address, releaseAt), releaseAt: new Date(releaseAt).toISOString(), incoming: incoming.toArray().map(letterView), outgoing: outgoing.toArray().map(letterView) });
     }
@@ -241,7 +258,9 @@ export async function handleSlowMail(request: Request, storage: MailStorage, clo
     const month = requiredText(form, 'month', 7);
     const requestId = requiredText(form, 'requestId', 36);
     const expectedRelease = requiredText(form, 'releaseAt', 24);
-    if (recipient === address || (recipient !== '' && !ADDRESS.test(recipient)) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !new RegExp(`^${LETTER_ID}$`).test(requestId)) {
+    const encodedStationery = form.has('stationery') ? requiredText(form, 'stationery', 128) : null;
+    const stationery = decodeStationery(encodedStationery);
+    if (recipient === address || (recipient !== '' && !ADDRESS.test(recipient)) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !new RegExp(`^${LETTER_ID}$`).test(requestId) || (encodedStationery && !stationery)) {
       throw new MailError('invalid_letter', 400);
     }
     const photos = await readPhotos(form);
@@ -260,13 +279,14 @@ export async function handleSlowMail(request: Request, storage: MailStorage, clo
       const id = crypto.randomUUID();
       const attachments = photos.map(({ type }) => ({ type }));
       sql.exec('INSERT INTO letters VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', id, address, recipient, requestId, senderName, recipientName, text, month, releaseAt, JSON.stringify(attachments), bytes);
+      if (stationery) sql.exec('INSERT INTO letter_stationery VALUES (?, ?)', id, JSON.stringify(stationery));
       photos.forEach((photo, index) => {
         for (let offset = 0; offset < photo.bytes.byteLength; offset += CHUNK_SIZE) {
           sql.exec('INSERT INTO mail_photo_chunks VALUES (?, ?, ?, ?)', id, index, offset / CHUNK_SIZE, photo.bytes.slice(offset, offset + CHUNK_SIZE));
         }
       });
       const guestKey = recipient ? undefined : createGuestKey(sql, id);
-      return { id, senderName, recipientName, text, month, releaseAt: expectedRelease, photos: attachments, guestKey };
+      return { id, senderName, recipientName, text, month, releaseAt: expectedRelease, photos: attachments, guestKey, stationery };
     });
     return json({ letter });
   } catch (error) {

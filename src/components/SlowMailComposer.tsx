@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useI18n } from '../i18n';
 import { getSlowMailbox, queueSlowLetter, slowMailError, type SlowLetter, type SlowMailbox } from '../product/slowMail';
+import { DEFAULT_SLOW_MAIL_STATIONERY, type SlowMailStationery } from '../product/slowMailStationery';
+import SlowMailEnvelope, { slowMailPaperColor } from './SlowMailEnvelope';
 import SlowMailShare from './SlowMailShare';
+import SlowMailStationeryPicker from './SlowMailStationeryPicker';
 import { colors, fonts } from '../theme';
 import type { MealEntry, PersonProfile } from '../types';
 
@@ -27,6 +30,7 @@ export default function SlowMailComposer({ draft, onClose, onMailbox }: {
   const [person, setPerson] = useState(draft.recipients[0]);
   const [senderName, setSenderName] = useState('');
   const [text, setText] = useState(draft.text);
+  const [stationery, setStationery] = useState<SlowMailStationery>(DEFAULT_SLOW_MAIL_STATIONERY);
   const [selected, setSelected] = useState<string[]>([]);
   const [mailbox, setMailbox] = useState<SlowMailbox>();
   const [letter, setLetter] = useState<SlowLetter>();
@@ -73,6 +77,7 @@ export default function SlowMailComposer({ draft, onClose, onMailbox }: {
         month: draft.month,
         releaseAt: mailbox.releaseAt,
         requestId: requestId.current,
+        stationery,
         photos: draft.sources.filter(source => selected.includes(source.id)),
       });
       if (active.current) setLetter(result);
@@ -104,7 +109,9 @@ export default function SlowMailComposer({ draft, onClose, onMailbox }: {
           </View>
           {letter ? <>
             <View style={styles.receipt}>
-              <Image aria-hidden source={require('../../assets/keepsakes/pastel-v1/monthly-letter.png')} resizeMode="contain" style={styles.envelope} />
+              <View aria-hidden style={styles.envelope}>
+                <SlowMailEnvelope stationery={letter.stationery ?? DEFAULT_SLOW_MAIL_STATIONERY} compact />
+              </View>
               <Text style={styles.addressee}>{copy(`To ${letter.recipientName}`, `寄给 ${letter.recipientName}`)}</Text>
               <Text accessibilityLiveRegion="polite" style={styles.receiptTitle}>{copy('Your letter is sealed.', '这封信已封存。')}</Text>
               <Text style={styles.receiptDate}>{copy(`Opens ${formatDate(letter.releaseAt)}`, `${formatDate(letter.releaseAt)} 可拆阅`)}</Text>
@@ -124,10 +131,11 @@ export default function SlowMailComposer({ draft, onClose, onMailbox }: {
                   </Pressable>)}</View>}
               </View>
             </View>
+            <SlowMailStationeryPicker stationery={stationery} onChange={setStationery} zh={zh} disabled={saving} />
             <View style={styles.field}>
               <Text style={styles.label}>{copy('The memory', '信件正文')}</Text>
               <TextInput accessibilityLabel={copy('Letter text', '信件正文')} value={text} onChangeText={setText} multiline maxLength={1200}
-                editable={!saving} style={[styles.input, styles.memory, styles.editor]} />
+                editable={!saving} style={[styles.input, styles.memory, styles.editor, { backgroundColor: slowMailPaperColor(stationery.paper) }]} />
             </View>
             <View style={styles.field}>
               <Text style={styles.label}>{copy('Sign the letter', '你的署名')}</Text>
@@ -178,7 +186,7 @@ const styles = StyleSheet.create({
   body: { fontFamily: fonts.body, fontSize: 13, lineHeight: 20, color: colors.mutedText },
   memory: { fontFamily: fonts.editorial, fontSize: 17, lineHeight: 27, color: colors.text },
   input: { minHeight: 44, padding: 11, backgroundColor: '#FFFDF7', fontFamily: fonts.body, fontSize: 16, color: colors.text, borderColor: paperLine, borderWidth: 1, borderRadius: 4 },
-  editor: { minHeight: 112, backgroundColor: '#F8F4EA', textAlignVertical: 'top' },
+  editor: { minHeight: 112, textAlignVertical: 'top' },
   button: { minHeight: 44, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.surface, borderColor: paperLine, borderWidth: 1, borderRadius: 4, paddingHorizontal: 12 },
   primary: { backgroundColor: olive, borderColor: olive },
   primaryText: { color: colors.surface },
@@ -192,7 +200,7 @@ const styles = StyleSheet.create({
   photoCaption: { fontFamily: fonts.body, color: colors.primary, fontSize: 13, lineHeight: 18 },
   footer: { gap: 9, paddingTop: 12, borderTopWidth: 1, borderColor: paperLine },
   receipt: { alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 21, backgroundColor: '#EEEBDC', borderWidth: 1, borderColor: paperLine, borderRadius: 4 },
-  envelope: { width: 92, height: 92 },
+  envelope: { width: 120, alignItems: 'center', marginBottom: 5 },
   addressee: { color: olive, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, textAlign: 'center' },
   receiptTitle: { fontFamily: fonts.editorial, color: colors.primary, fontSize: 25, lineHeight: 32, textAlign: 'center' },
   receiptDate: { fontFamily: fonts.body, color: colors.secondary, fontSize: 13, lineHeight: 19, textAlign: 'center' },

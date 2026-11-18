@@ -1,5 +1,6 @@
 import { getManagedMediaById, getManagedOriginalBlob } from '../media/managedMedia';
 import type { MealEntry } from '../types';
+import type { SlowMailStationery } from './slowMailStationery';
 
 export const SLOW_MAIL_GUEST_KEY = /^[A-Za-z0-9_-]{32}$/;
 
@@ -17,6 +18,7 @@ export interface SlowLetter {
   releaseAt: string;
   photos: { type: string }[];
   guestKey?: string;
+  stationery?: SlowMailStationery;
 }
 
 export interface SlowMailbox {
@@ -76,6 +78,7 @@ export function slowMailGuestUrl(guestKey: string, locale: 'en' | 'zh'): string 
 export interface SlowGuestLetter {
   releaseAt: string;
   letter: SlowLetter | null;
+  stationery?: SlowMailStationery;
 }
 
 export async function getSlowGuestLetter(guestKey: string): Promise<SlowGuestLetter> {
@@ -95,13 +98,15 @@ export async function queueSlowLetter(input: {
   requestId: string;
   releaseAt: string;
   photos: MealEntry[];
+  stationery?: SlowMailStationery;
 }): Promise<SlowLetter> {
-  const { photos, ...fields } = input;
+  const { photos, stationery, ...fields } = input;
   if (photos.length < 1 || photos.length > 3) throw new Error('invalid_letter');
   const body = new FormData();
   for (const [field, value] of Object.entries(fields)) {
     if (value !== undefined) body.set(field, value);
   }
+  if (stationery) body.set('stationery', JSON.stringify(stationery));
   let size = 0;
   for (const photo of photos) {
     const original = await getManagedMediaById(photo.photoMediaId);
