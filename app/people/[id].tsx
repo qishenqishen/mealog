@@ -170,6 +170,11 @@ export default function PersonDetailPage() {
               <Text style={styles.recordButtonText}>{locale === 'zh' ? `记下和${displayName}的一餐` : `Record a meal with ${displayName}`}</Text>
             </Pressable>
           ) : null}
+          {Platform.OS === 'web' && visiblePerson && !person.deletedAt && scope === 'personal' && sharedMeals.length > 0 ? (
+            <Pressable accessibilityRole="button" style={styles.navButton} onPress={() => router.push({ pathname: '/insights', params: { personId: person.id, slowMail: '1', date: lastDate } })}>
+              <Text style={styles.navButtonText}>{locale === 'zh' ? '写一封记忆慢递 ↗' : 'Write a memory letter ↗'}</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <LoadState error={error} onRetry={load} />

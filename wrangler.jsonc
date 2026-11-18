@@ -14,9 +14,15 @@
   },
   "ai": { "binding": "AI" },
   "durable_objects": {
-    "bindings": [{ "name": "INSIGHTS_QUOTA", "class_name": "InsightsQuota" }]
+    "bindings": [
+      { "name": "INSIGHTS_QUOTA", "class_name": "InsightsQuota" },
+      { "name": "SLOW_MAIL", "class_name": "SlowMail" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["InsightsQuota"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["InsightsQuota"] },
+    { "tag": "v2", "new_sqlite_classes": ["SlowMail"] }
+  ],
   "observability": {
     "enabled": false,
     "logs": { "enabled": false, "invocation_logs": false },

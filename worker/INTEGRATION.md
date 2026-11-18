@@ -49,3 +49,11 @@ See the [MVP QA report](../docs/STANDALONE_MVP_QA.md) for observed results. Loca
 - [SQLite Durable Object storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)
 - [Durable Objects pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/)
 - [Static assets and Worker routing](https://developers.cloudflare.com/workers/static-assets/routing/worker-script/)
+
+## Slow Mail
+
+`GET /api/slow-mail` registers a browser's inbox and lists its sent and delivered letters. A browser-generated secret goes in the `Authorization` bearer header. Share the public inbox address returned by the API. It is the SHA-256 digest of the secret. Access on a different browser requires the same inbox secret.
+
+`POST /api/slow-mail` accepts the recipient's registered address, sender and recipient display names, letter text, the source memory month, a UUID request ID, the expected delivery timestamp, and one to three original JPEG, PNG, WebP or GIF files under 12 MiB in total. The server accepts three letters per sender in each UTC calendar month. Letters become readable by the recipient at the start of the next month in UTC. The timestamp check catches a draft crossing the cutoff. Retrying a saved request ID returns the existing letter.
+
+The `SlowMail` SQLite Durable Object stores submitted letter text and image bytes. Photos require the sender's bearer key, or the recipient's key after release. The original bytes can include EXIF data. The API returns no pending letters to the recipient and marks letter responses `no-store`. Guest registration and upload attempts have daily network limits, and the shared storage has a 512 MiB and 5,000-letter ceiling. There is no scheduled write required for delivery or expiry.

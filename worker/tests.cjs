@@ -17,6 +17,7 @@ require.extensions['.ts'] = (module, filename) => {
 const { validateInput, validateNarrative, validateReport, calculateMetrics, MODEL, PROVIDER, MAX_BODY_BYTES } = require('../src/insights/contract.ts');
 const { handleMonthly, buildPrompt, MAX_PROMPT_BYTES, AI_TIMEOUT_MS } = require('./handler.ts');
 const { initializeQuota, reserveQuota, IP_WINDOW_MS } = require('./quota.ts');
+const { initializeMail, handleSlowMail } = require('./slowMail.ts');
 const memory = new Map();
 const storage = { getItem: async (key) => memory.get(key) ?? null, setItem: async (key, value) => { memory.set(key, value); }, removeItem: async (key) => { memory.delete(key); } };
 const load = Module._load;
@@ -36,7 +37,7 @@ function request(body = input, headers = {}) {
 }
 function openQuota(filename) {
   const db = new DatabaseSync(filename);
-  const sql = { exec(query, ...params) {
+  const sql = { get databaseSize() { return db.prepare('PRAGMA page_count').get().page_count * db.prepare('PRAGMA page_size').get().page_size; }, exec(query, ...params) {
     const rows = db.prepare(query).all(...params);
     return { toArray: () => rows, one: () => { assert.equal(rows.length, 1); return rows[0]; } };
   } };
@@ -48,7 +49,91 @@ function openQuota(filename) {
   } };
 }
 
+async function testSlowMail() {
+  const storage = openQuota(':memory:');
+  initializeMail(storage.sql);
+  const base = 'https://mealog.example';
+  const senderKey = 'a'.repeat(64), recipientKey = 'b'.repeat(64), strangerKey = 'c'.repeat(64);
+  const releaseAt = '2026-12-01T00:00:00.000Z';
+  let now = Date.parse('2026-11-30T23:59:59Z');
+  const send = (path, auth, options = {}) => handleSlowMail(new Request(base + '/api/slow-mail' + path, {
+    ...options,
+    headers: { ...(auth ? { Authorization: `Bearer ${auth}` } : {}), ...options.headers },
+  }), storage, () => now);
+  const postHeaders = { Origin: base };
+  const read = async (auth) => (await send('', auth)).json();
+  const photoBytes = new Uint8Array(1024 * 1024 + 7).fill(127);
+  photoBytes.set([255, 216, 255]);
+  const form = (recipient, requestId = crypto.randomUUID(), release = releaseAt, photo = photoBytes) => {
+    const fields = new FormData();
+    const values = { senderName: 'Sender', recipientName: 'Recipient', text: 'The dumplings we made.', month: '2026-10', releaseAt: release, recipient, requestId };
+    for (const [key, value] of Object.entries(values)) fields.set(key, value);
+    fields.append('photo', new Blob([photo], { type: 'image/jpeg' }), 'original.jpg');
+    return fields;
+  };
+  const post = (body) => send('', senderKey, { method: 'POST', headers: postHeaders, body });
+  assert.equal((await send('', null)).status, 401);
+  assert.equal((await send('', senderKey, { headers: { Origin: 'https://other.example' } })).status, 403);
+  const sender = await read(senderKey), recipient = await read(recipientKey);
+  assert.equal(sender.remaining, 3);
+  assert.equal(sender.releaseAt, releaseAt);
+  assert.notEqual(recipient.address, recipientKey);
+  assert.equal((await read(recipient.address)).incoming.length, 0, 'Public address cannot authenticate as its owner');
+  assert.equal((await send('', senderKey, { method: 'POST', body: form(recipient.address) })).status, 403);
+  assert.equal((await post(form('d'.repeat(64)))).status, 404);
+  assert.equal((await post(form(recipient.address, crypto.randomUUID(), '2026-11-01T00:00:00.000Z'))).status, 409);
+  assert.equal((await post(form(recipient.address, crypto.randomUUID(), releaseAt, new Uint8Array([0, 0, 0])))).status, 415);
+  const exec = storage.sql.exec;
+  storage.sql.exec = (query, ...args) => {
+    if (query.startsWith('INSERT INTO mail_photo_chunks') && args[2] === 1) throw new Error('write interrupted');
+    return exec(query, ...args);
+  };
+  assert.equal((await post(form(recipient.address))).status, 503);
+  storage.sql.exec = exec;
+  assert.equal((await read(senderKey)).remaining, 3);
+  assert.equal((await read(senderKey)).outgoing.length, 0);
+  assert.equal(storage.sql.exec('SELECT COUNT(*) AS count FROM mail_photo_chunks').one().count, 0);
+  const requestId = crypto.randomUUID();
+  const initial = await post(form(recipient.address, requestId));
+  assert.equal(initial.status, 200);
+  const { letter } = await initial.json();
+  assert.equal(letter.releaseAt, releaseAt);
+  assert.equal(letter.month, '2026-10');
+  const photoPath = `/${letter.id}/photos/0`;
+  assert.equal((await read(senderKey)).outgoing.length, 1);
+  assert.equal((await read(recipientKey)).incoming.length, 0);
+  assert.equal((await send(photoPath, recipientKey)).status, 404);
+  assert.equal((await send(photoPath, strangerKey)).status, 404);
+  assert.equal((await send(photoPath, senderKey)).status, 200);
+  const competing = await Promise.all(Array.from({ length: 3 }, () => post(form(recipient.address))));
+  assert.equal(competing.filter(response => response.status === 200).length, 2);
+  assert.equal(competing.filter(response => response.status === 429).length, 1);
+  assert.equal((await read(senderKey)).remaining, 0);
+  assert.equal((await read(recipientKey)).incoming.length, 0);
+  now = Date.parse(releaseAt);
+  const delivered = await read(recipientKey);
+  assert.equal(delivered.incoming.length, 3);
+  assert(delivered.incoming.some(item => item.id === letter.id));
+  assert.equal((await read(senderKey)).remaining, 3);
+  const existing = await post(form(recipient.address, requestId));
+  assert.equal((await existing.json()).letter.id, letter.id, 'Retry across the month boundary does not create another letter');
+  assert.equal((await read(senderKey)).remaining, 3);
+  const image = await send(photoPath, recipientKey);
+  assert.equal(image.status, 200);
+  assert.equal(image.headers.get('Content-Type'), 'image/jpeg');
+  assert.equal(image.headers.get('Cache-Control'), 'no-store');
+  assert.deepEqual(new Uint8Array(await image.arrayBuffer()), photoBytes);
+  assert.equal((await send(photoPath, recipient.address)).status, 404);
+  assert.equal((await send(photoPath, strangerKey)).status, 404);
+  const large = new Uint8Array(12 * 1024 * 1024 + 1);
+  large.set([255, 216, 255]);
+  assert.equal((await post(form(recipient.address, crypto.randomUUID(), releaseAt, large))).status, 413);
+  assert.equal((await send('', senderKey, { method: 'POST', headers: { ...postHeaders, 'Content-Type': 'multipart/form-data; boundary=x' }, body: new Uint8Array(13 * 1024 * 1024) })).status, 413);
+  storage.db.close();
+}
+
 async function main() {
+  await testSlowMail();
   const gps = { source: 'gps', label: 'Old place', address: 'Old address', latitude: 34, longitude: -118 };
   assert.equal(resolveMealLocationForSave(' Old place ', gps), gps);
   assert.equal(resolveMealLocationForSave('', gps), undefined);
@@ -212,7 +297,7 @@ async function main() {
     await assert.rejects(() => client.generateMonthlyReport(clientInput), (error) => error.code === 'ai_unavailable');
     assert.equal((await client.readReportCache())[0].report.generatedAt, report.generatedAt);
   } finally { global.fetch = fetchOriginal; }
-  console.log('PASS: validation, privacy allowlist, bounded prompt/body, SQLite quota concurrency/reopen/day reset, provider failures, references, client cache and errors');
+  console.log('PASS: Insights validation, quota, provider failures and client cache; Slow Mail privacy, cutoff, quota, retries and original bytes');
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; });

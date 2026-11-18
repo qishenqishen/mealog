@@ -2,33 +2,49 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { getMeals, getPeopleProfiles, getMonthlyReflections, saveMonthlyReflection } from '../../src/storage';
+import { getMealCompanions, getMeals, getPeopleProfiles, getMonthlyReflections, saveMonthlyReflection } from '../../src/storage';
+import SlowMailComposer, { type SlowMailDraft } from '../../src/components/SlowMailComposer';
 import { getPreferences, getMemoryCards, saveMemoryCard, feedbackCard, trackEvent, type ProductPreferences, type MemoryCard } from '../../src/product/store';
 import { filterPeriod, periodRange, localDate, recordedComparison, type ReflectionPeriod } from '../../src/product/memory';
 import { generateId } from '../../src/utils/id';
 import { checkInput, generateMonthlyReport, makePeriodInput, readReportCache, saveReportCache, inputSnapshot, type CachedReport } from '../../src/insights/monthlyReport';
-import type { MealEntry, PersonProfile } from '../../src/types';
+import type { MealCompanion, MealEntry, PersonProfile } from '../../src/types';
 import { InsightError, type MonthlyReport } from '../../src/insights/contract';
 import { useI18n } from '../../src/i18n';
 import { colors, fonts } from '../../src/theme';
 
 export default function InsightsScreen() {
   const { locale } = useI18n(); const zh = locale === 'zh'; const copy = (en: string, cn: string) => zh ? cn : en;
-  const params = useLocalSearchParams<{ personId?: string }>();
-  const [period, setPeriod] = useState<ReflectionPeriod>('week'), [anchor, setAnchor] = useState(localDate), [personId, setPersonId] = useState(params.personId || '');
+  const params = useLocalSearchParams<{ personId?: string; period?: string; slowMail?: string; date?: string }>();
+  const monthlyLink = params.period === 'month' || params.slowMail === '1';
+  const linkedDate = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) &&
+    localDate(new Date(`${params.date}T12:00:00`)) === params.date ? params.date : undefined;
+  const [period, setPeriod] = useState<ReflectionPeriod>(monthlyLink ? 'month' : 'week'), [anchor, setAnchor] = useState(() => linkedDate || localDate()), [personId, setPersonId] = useState(params.personId || '');
   const [showFacts, setShowFacts] = useState(false), [showWords, setShowWords] = useState(false), [showSources, setShowSources] = useState(false);
   const [scope, setScope] = useState<'personal' | 'sample'>('personal');
+  const [companions, setCompanions] = useState<MealCompanion[]>([]);
+  const [slowDraft, setSlowDraft] = useState<SlowMailDraft>();
   const [meals, setMeals] = useState<MealEntry[]>([]), [people, setPeople] = useState<PersonProfile[]>([]), [cache, setCache] = useState<CachedReport[]>([]);
   const [prefs, setPrefs] = useState<ProductPreferences>({ localOnlyAI: false, redact: true, analytics: false });
   const [notes, setNotes] = useState<Record<string, string>>({}), [drafts, setDrafts] = useState<Record<string, string>>({});
   const [includeNotes, setIncludeNotes] = useState(false), [consent, setConsent] = useState(false), [pending, setPending] = useState(false), [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState(''), [loadError, setLoadError] = useState(''), [card, setCard] = useState<MemoryCard>();
-  const [shown, setShown] = useState<{ snapshot: string; report: MonthlyReport }>(); const inFlight = useRef(false);
+  const [shown, setShown] = useState<{ snapshot: string; scope: 'personal' | 'sample'; report: MonthlyReport }>(); const inFlight = useRef(false);
+  useEffect(() => {
+    if (monthlyLink) {
+      setPeriod('month');
+      setScope('personal');
+      setAnchor(linkedDate || localDate());
+      setPersonId(params.personId || '');
+      setConsent(false);
+      setMessage('');
+    }
+  }, [linkedDate, monthlyLink, params.personId]);
   const load = useCallback(async () => {
     setLoaded(false);
     try {
-      const [all, profiles, reports, preferences, reflections] = await Promise.all([getMeals(), getPeopleProfiles(), readReportCache(), getPreferences(), getMonthlyReflections()]);
-      setMeals(all); setPeople(profiles); setCache(reports); setPrefs(preferences); setNotes(Object.fromEntries(reflections.map(item => [`${item.scope}:${item.month}`, item.text]))); setLoaded(true); setLoadError('');
+      const [all, profiles, reports, preferences, reflections, relations] = await Promise.all([getMeals(), getPeopleProfiles(), readReportCache(), getPreferences(), getMonthlyReflections(), getMealCompanions()]);
+      setCompanions(relations); setMeals(all); setPeople(profiles); setCache(reports); setPrefs(preferences); setNotes(Object.fromEntries(reflections.map(item => [`${item.scope}:${item.month}`, item.text]))); setLoaded(true); setLoadError('');
     } catch { setLoadError(copy('Could not load memories. Retry without overwriting data.', '暂时无法读取记忆，可重试；原有数据不会覆盖。')); }
   }, [locale]);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
@@ -44,10 +60,26 @@ export default function InsightsScreen() {
   const terms = prefs.redact ? [...people.flatMap(person => [person.name, person.nickname || '']), ...meals.map(meal => meal.location || '')] : [];
   const input = range ? makePeriodInput(selected, range.start, range.end, period, locale, includeNotes, terms) : undefined;
   const snapshot = input ? inputSnapshot(input) : '';
-  const report = shown?.snapshot === snapshot ? shown.report : cache.find(entry => entry.snapshot === snapshot && entry.scope === scope)?.report;
+  const report = shown?.snapshot === snapshot && shown.scope === scope ? shown.report : cache.find(entry => entry.snapshot === snapshot && entry.scope === scope)?.report;
   const cardKey = `${scope}:${personId}:${period}:${range?.start}:${range?.end}:${report?.generatedAt || ''}`;
   useEffect(() => { let active = true; getMemoryCards().then(items => { if (active) setCard(items.find(item => item.id === cardKey)); }).catch(() => undefined); return () => { active = false; }; }, [cardKey]);
   const savedCard = card?.id === cardKey ? card : undefined;
+  const slowDrafts = report?.narrative.observations.map(observation => {
+    if (Platform.OS !== 'web' || period !== 'month' || scope !== 'personal') return undefined;
+    const evidence = selected.filter(meal => observation.mealIds.includes(meal.id));
+    if (!evidence.length || evidence.length !== observation.mealIds.length) return undefined;
+    const recipients = people.filter(person => person.origin !== 'sample' && !person.deletedAt
+      && (!personId || person.id === personId)
+      && evidence.every(meal => companions.some(relation => relation.mealId === meal.id && relation.personId === person.id)));
+    const usedMedia = new Set<string>();
+    const sources = evidence.filter(meal => {
+      if (!meal.photoMediaId || !meal.photoUri || usedMedia.has(meal.photoMediaId)) return false;
+      usedMedia.add(meal.photoMediaId);
+      return true;
+    });
+    if (recipients.length && sources.length) return { month: report.month, text: observation.text, recipients, sources };
+    return undefined;
+  });
   const noteKey = `${scope}:${anchor.slice(0, 7)}`, ownNote = drafts[noteKey] ?? notes[noteKey] ?? '';
   const eligible = period !== 'week' || selected.length >= 3;
   const btn = (label: string, action: () => void, chosen = false, disabled = pending) => <Pressable accessibilityRole="button" accessibilityState={{ selected: chosen, disabled }} disabled={disabled} onPress={action} style={[styles.button, chosen && styles.chosen, disabled && { opacity: 0.45 }]}><Text style={chosen ? styles.white : styles.body}>{label}</Text></Pressable>;
@@ -77,8 +109,13 @@ export default function InsightsScreen() {
   }
   const safely = (action: () => Promise<void>) => { void action().catch(() => setMessage(copy('Could not save. Please retry.', '保存失败，请重试。'))); };
   return <SafeAreaView style={styles.safe} edges={['top']}><ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-    <Text style={styles.kicker}>{copy('MEALOG / REFLECTIONS', 'MEALOG / 回望')}</Text><Text style={styles.title}>{copy('A little time to return.', '回味那些日子。')}</Text>
+    <View style={styles.row}>
+      <Text style={[styles.kicker, { flex: 1 }]}>{copy('MEALOG / REFLECTIONS', 'MEALOG / 回望')}</Text>
+      {Platform.OS === 'web' && btn(copy('Memory Mail inbox', '记忆慢递信箱'), () => router.push('/slow-mail'))}
+    </View>
+    <Text style={styles.title}>{copy('A little time to return.', '回味那些日子。')}</Text>
     <View style={styles.wrap}>{(['week', 'month', 'year'] as const).map(value => <View key={value}>{btn(value === 'week' ? copy('Week', '本周小记') : value === 'month' ? copy('Month', '月度回顾') : copy('Year', '年度餐桌'), () => { setPeriod(value); resetConsent(); }, period === value)}</View>)}</View>
+    {period === 'month' && scope === 'personal' && Platform.OS === 'web' && <Text style={styles.body}>{copy('For Memory Mail, choose someone you ate with and compose this month’s reflection from meals with photos.', '想寄一封记忆信？先选一位同桌的人，再整理有照片的月度回顾。')}</Text>}
     <TextInput accessibilityLabel={copy('Period anchor date YYYY-MM-DD', '回顾日期 YYYY-MM-DD')} value={anchor} onChangeText={value => { setAnchor(value); resetConsent(); }} style={styles.input} maxLength={10}/>
     {!range ? <Text style={styles.error}>{copy('Enter a valid date YYYY-MM-DD', '请输入有效日期 YYYY-MM-DD')}</Text> : <Text style={styles.body}>{range.start} — {range.end}</Text>}
     <View style={styles.wrap}>{btn(copy('My table', '我的餐桌'), () => { setScope('personal'); setPersonId(''); resetConsent(); }, scope === 'personal')}{btn(copy('Sample table', '示例餐桌'), () => { setScope('sample'); setPersonId(''); resetConsent(); }, scope === 'sample')}</View>
@@ -102,13 +139,45 @@ export default function InsightsScreen() {
         {input && input.meals.length < selected.length && <Text style={styles.body}>{copy(`AI receives ${input.meals.length} of ${selected.length} chronologically sampled records. Local counts use all records.`, `AI 接收 ${selected.length} 条中的 ${input.meals.length} 条时间分布样本，本地统计包含全部记录。`)}</Text>}
         {btn(pending ? copy('Generating…', '正在整理…') : copy('Compose a reflection', '整理这一页'), () => void generate(), true, pending || !consent || prefs.localOnlyAI || !eligible || !selected.length || !range || Platform.OS !== 'web')}
         {message && <Text accessibilityLiveRegion="polite" style={styles.body}>{message}</Text>}
-        {report && <View style={styles.section}>{report.usage && <Text style={styles.body}>{copy(`Measured AI latency: ${(report.usage.latencyMs / 1000).toFixed(1)}s · input/output tokens: ${report.usage.inputTokens ?? 'not returned'}/${report.usage.outputTokens ?? 'not returned'}`, `实测 AI 耗时 ${(report.usage.latencyMs / 1000).toFixed(1)} 秒 · 输入／输出 tokens：${report.usage.inputTokens ?? '服务商未返回'}/${report.usage.outputTokens ?? '服务商未返回'}`)}</Text>}<Text style={styles.heading}>{report.narrative.title}</Text>{report.narrative.observations.map((observation, index) => <View key={index} style={styles.section}><Text selectable style={styles.narrative}>{observation.text}</Text><View style={styles.wrap}>{observation.mealIds.map(id => { const source = meals.find(meal => meal.id === id); return source ? <View key={id}>{btn(`${source.date} · ${source.title}`, () => { if (scope === 'personal') void trackEvent('revisit'); router.push(`/meal/${id}`); })}</View> : <Text key={id} style={styles.body}>{copy('Source no longer available', '依据记录暂不可用')}</Text>; })}</View><Text style={styles.body}>{copy('Is this observation accurate?', '这句说得对吗？')}</Text><View style={styles.wrap}>{btn(copy('Yes', '说得对'), () => safely(() => feedback(index, 'yes')), savedCard?.feedback[index] === 'yes')}{btn(copy('No', '有误'), () => safely(() => feedback(index, 'no')), savedCard?.feedback[index] === 'no')}</View></View>)}<Text style={styles.body}>{copy('AI interpretation can be wrong; each observation links to its evidence.', 'AI 解读可能有误，每句话均可回到引用依据。')}</Text>{btn(copy('Keep as a private memory card', '收藏为私密记忆卡片'), () => safely(keepCard))}{btn(copy('Open cards and image export', '打开卡片与长图导出'), () => router.push('/memory-tools?tab=cards'))}</View>}
+        {report && <View style={styles.section}>
+          {report.usage && <Text style={styles.body}>{copy(`Measured AI latency: ${(report.usage.latencyMs / 1000).toFixed(1)}s · input/output tokens: ${report.usage.inputTokens ?? 'not returned'}/${report.usage.outputTokens ?? 'not returned'}`, `实测 AI 耗时 ${(report.usage.latencyMs / 1000).toFixed(1)} 秒 · 输入／输出 tokens：${report.usage.inputTokens ?? '服务商未返回'}/${report.usage.outputTokens ?? '服务商未返回'}`)}</Text>}
+          <Text style={styles.heading}>{report.narrative.title}</Text>
+          {report.narrative.observations.map((observation, index) => {
+            const draft = slowDrafts?.[index];
+            return <View key={index} style={styles.section}>
+              <Text selectable style={styles.narrative}>{observation.text}</Text>
+              <View style={styles.wrap}>{observation.mealIds.map(id => {
+                const source = meals.find(meal => meal.id === id);
+                return source ? <View key={id}>{btn(`${source.date} · ${source.title}`, () => {
+                  if (scope === 'personal') void trackEvent('revisit');
+                  router.push(`/meal/${id}`);
+                })}</View> : <Text key={id} style={styles.body}>{copy('Source no longer available', '依据记录暂不可用')}</Text>;
+              })}</View>
+              <Text style={styles.body}>{copy('Is this observation accurate?', '这句说得对吗？')}</Text>
+              <View style={styles.wrap}>
+                {btn(copy('Yes', '说得对'), () => safely(() => feedback(index, 'yes')), savedCard?.feedback[index] === 'yes')}
+                {btn(copy('No', '有误'), () => safely(() => feedback(index, 'no')), savedCard?.feedback[index] === 'no')}
+                {draft && btn(copy('Send at month end', '在月底寄出'), () => setSlowDraft(draft))}
+              </View>
+            </View>;
+          })}
+          {Platform.OS === 'web' && period === 'month' && scope === 'personal' && !slowDrafts?.some(Boolean) &&
+            <Text style={styles.body}>{copy('A memory letter needs an original photo and a recipient who shared each meal cited in the memory.', '记忆信需要一张原始照片，收信人也需参与这段记忆引用的每一餐。')}</Text>}
+          <Text style={styles.body}>{copy('AI interpretation can be wrong; each observation links to its evidence.', 'AI 解读可能有误，每句话均可回到引用依据。')}</Text>
+          {btn(copy('Keep as a private memory card', '收藏为私密记忆卡片'), () => safely(keepCard))}
+          {btn(copy('Open cards and image export', '打开卡片与长图导出'), () => router.push('/memory-tools?tab=cards'))}
+        </View>}
       </View>
       {btn(copy(showWords ? 'Close my words −' : 'A few words of my own +', showWords ? '收起我的小记 −' : '这个月，我想留下 ＋'), () => setShowWords(!showWords))}
       {showWords && <View style={styles.card}><Text style={styles.heading}>{copy('Your words for this month', '这个月，我想留下')}</Text><TextInput accessibilityLabel={copy('Monthly words', '月度感想')} multiline value={ownNote} maxLength={1200} onChangeText={value => setDrafts(current => ({ ...current, [noteKey]: value }))} style={[styles.input, { minHeight: 120 }]}/><Text style={styles.body}>{copy('Always local. Never sent to AI.', '始终只保存在本地，不发送给 AI。')}</Text>{btn(copy('Save my words', '保存我的感想'), () => safely(async () => { await saveMonthlyReflection(anchor.slice(0, 7), scope, ownNote); setNotes(current => ({ ...current, [noteKey]: ownNote.trim() })); setMessage(copy('Your words are saved.', '感想已保存。')); }), false, pending || !range)}</View>}
       {btn(copy(showSources ? 'Close source moments −' : 'Browse source moments +', showSources ? '收起原始时刻 −' : '翻阅原始时刻 ＋'), () => setShowSources(!showSources))}
       {showSources && <><Text style={styles.heading}>{copy('Source moments', '回到这些时刻')}</Text>{!selected.length && <Text style={styles.body}>{copy('No memories in this period yet.', '这段时间还没有记录。')}</Text>}{selected.slice(0, 20).map(meal => <View key={meal.id}>{btn(`${meal.date} · ${meal.title}`, () => { if (scope === 'personal') void trackEvent('revisit'); router.push(`/meal/${meal.id}`); })}</View>)}{btn(copy('Import older photos', '导入历史照片'), () => router.push('/memory-tools?tab=import'))}</>}
     </>}
-  </ScrollView></SafeAreaView>;
+  </ScrollView>
+    {slowDraft && <SlowMailComposer draft={slowDraft} onClose={() => setSlowDraft(undefined)} onMailbox={() => {
+      setSlowDraft(undefined);
+      router.push('/slow-mail');
+    }} />}
+  </SafeAreaView>;
 }
 const styles = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.background }, page: { padding: 22, paddingBottom: 28, gap: 12 }, kicker: { fontFamily: fonts.body, fontSize: 13, color: colors.secondary }, title: { fontFamily: fonts.editorial, fontSize: 26, lineHeight: 36, color: colors.primary }, heading: { fontFamily: fonts.editorial, fontSize: 17, lineHeight: 25, color: colors.primary }, body: { fontFamily: fonts.body, fontSize: 14, lineHeight: 23, color: colors.mutedText }, narrative: { fontFamily: fonts.editorial, fontSize: 17, lineHeight: 28, color: colors.text }, count: { fontSize: 32, color: colors.primary }, wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, button: { minHeight: 44, padding: 12, borderRadius: 12, justifyContent: 'center', backgroundColor: colors.surface }, chosen: { backgroundColor: colors.primary }, white: { color: colors.background, fontSize: 14 }, input: { fontFamily: fonts.body, minHeight: 46, padding: 12, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12, color: colors.primary, fontSize: 16 }, card: { backgroundColor: colors.surface, padding: 18, borderRadius: 12, gap: 12, borderWidth: 1, borderColor: colors.primary }, row: { flexDirection: 'row', alignItems: 'center', gap: 12 }, section: { gap: 12, paddingTop: 12 }, error: { color: '#A14335' } });

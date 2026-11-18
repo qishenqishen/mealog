@@ -42,9 +42,11 @@ Insights uses Cloudflare Workers AI, not a scripted imitation. Generation happen
 
 The **In your own words** monthly reflection is saved only on your device and is never sent to AI. It is optional: the app does not need to decide what a meal meant for you. AI is prompted to remember concrete details, not diagnose feelings, assume a relationship is growing closer, or prescribe a happier outlook.
 
-The app does not store meal text on its server or log request bodies. Reports are cached on your device. AI can make mistakes; check the linked meal evidence. Meal counts and other statistics are calculated from the records, not invented by the model.
+The app does not store the text submitted for AI generation or log request bodies. Reports are cached on your device. AI can make mistakes; check the linked meal evidence. Meal counts and other statistics are calculated from the records, not invented by the model.
 
 This public demo allows **50 generation attempts per UTC day across all visitors**, and **3 per network/IP in 10 minutes**. Failed attempts also count. Existing reports and normal recording remain usable when AI is unavailable. No paid-plan upgrade is performed.
+
+Memory Mail stores only the letter and originals you choose to seal. The recipient uses their browser mailbox address, and letters open at the next UTC month boundary. Each mailbox can send three letters per month.
 
 ## Want The Source Code?
 

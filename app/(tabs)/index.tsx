@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { getMeals, getPeopleProfiles, getMealCompanions } from '../../src/storage';
@@ -29,7 +29,7 @@ export default function HomeScreen() {
   useFocusEffect(useCallback(() => { void load(); }, [load]));
   const week = filterPeriod(meals, localDate(), 'week');
   const openMoment = (id: string) => { void trackEvent('revisit'); router.push(`/meal/${id}`); };
-  const links = [{ label: zh ? '每月餐桌' : 'Monthly tables', route: '/table' }, { label: zh ? '从相册带回来' : 'Import photographs', route: '/memory-tools?tab=import' }, { label: zh ? '整理与搜索' : 'Organize & search', route: '/memory-tools' }, { label: zh ? '私密记忆卡片' : 'Memory cards', route: '/memory-tools?tab=cards' }, { label: zh ? '设置与备份' : 'Settings & backup', route: '/profile' }];
+  const links = [...(Platform.OS === 'web' ? [{ label: zh ? '记忆慢递' : 'Memory Mail', route: '/slow-mail' }] : []), { label: zh ? '每月餐桌' : 'Monthly tables', route: '/table' }, { label: zh ? '从相册带回来' : 'Import photographs', route: '/memory-tools?tab=import' }, { label: zh ? '整理与搜索' : 'Organize & search', route: '/memory-tools' }, { label: zh ? '私密记忆卡片' : 'Memory cards', route: '/memory-tools?tab=cards' }, { label: zh ? '设置与备份' : 'Settings & backup', route: '/profile' }];
   return <SafeAreaView style={styles.safe} edges={['top']}><ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
     <View style={styles.header}><Image source={require('../../assets/brand/mealog-wordmark-v2.png')} accessibilityLabel="Mealog" accessibilityRole="image" style={styles.brand} resizeMode="contain" /><Pressable accessibilityRole="button" accessibilityLabel={zh ? '打开餐桌菜单' : 'Open table menu'} accessibilityState={{ expanded: menu }} onPress={() => setMenu(!menu)} style={styles.menuButton}><Text style={styles.small}>{menu ? (zh ? '收起 −' : 'Close −') : (zh ? '我的餐桌 ＋' : 'My table +')}</Text></Pressable></View>
     {menu && <View style={styles.menu}>{links.map(item => <Pressable key={item.route} accessibilityRole="button" onPress={() => { setMenu(false); router.push(item.route as '/table'); }} style={styles.menuItem}><Text style={styles.body}>{item.label}</Text><Text style={styles.small}>↗</Text></Pressable>)}</View>}

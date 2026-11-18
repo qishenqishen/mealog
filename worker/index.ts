@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { MODEL } from '../src/insights/contract';
 import { handleMonthly, json, MAX_OUTPUT_TOKENS, RESPONSE_FORMAT } from './handler';
 import { initializeQuota, reserveQuota } from './quota';
+import { handleSlowMail, initializeMail } from './slowMail';
 
 export class InsightsQuota extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -17,6 +18,17 @@ export class InsightsQuota extends DurableObject<Env> {
   }
 }
 
+export class SlowMail extends DurableObject<Env> {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    initializeMail(ctx.storage.sql);
+  }
+
+  fetch(request: Request) {
+    return handleSlowMail(request, this.ctx.storage);
+  }
+}
+
 export default {
   async fetch(request, env): Promise<Response> {
     const path = new URL(request.url).pathname;
@@ -27,6 +39,9 @@ export default {
           messages, max_tokens: MAX_OUTPUT_TOKENS, temperature: 0.3, stream: false, response_format: RESPONSE_FORMAT,
         }, { signal }),
       });
+    }
+    if (path === '/api/slow-mail' || path.startsWith('/api/slow-mail/')) {
+      return env.SLOW_MAIL.getByName('mailbox-v1').fetch(request);
     }
     if (path === '/api' || path.startsWith('/api/')) return json({ error: { code: 'not_found' } }, 404);
     return env.ASSETS.fetch(request);

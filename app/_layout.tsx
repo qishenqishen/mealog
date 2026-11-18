@@ -73,6 +73,7 @@ function AppRoot() {
             <Stack.Screen name="photobook" />
             <Stack.Screen name="people/index" />
             <Stack.Screen name="profile" />
+            <Stack.Screen name="slow-mail" />
             <Stack.Screen name="people/[id]" />
           </Stack>
         ) : (
