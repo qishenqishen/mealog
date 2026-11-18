@@ -109,15 +109,15 @@
     const title = `${monthName} ${year}`;
     labels = zh ? {
       cover: '封面', back: '封底', shelf: '书架', index: '食物索引', archive: '食物档案',
-      hint: '滑动书页 · 或使用方向键', previous: '上一页', next: '下一页', memory: '查看这餐 ↗',
+      hint: '滑动书页 · 或使用方向键', previous: '上一页', next: '下一页', memory: '查看这餐 ↗︎',
       noPhoto: '这一餐，还没有照片', empty: '这个月的餐桌，等你留下第一段回忆。',
-      archiveHint: '点一份食物，回到那一餐。', fullArchive: '打开食物档案 ↗', title: '这个月，吃过的日常。',
+      archiveHint: '点一份食物，回到那一餐。', fullArchive: '打开食物档案 ↗︎', title: '这个月，吃过的日常。',
       sample: '示例相册', personal: '我的餐桌回忆', kept: `${data.meals.length} 餐记忆`,
     } : {
       cover: 'Front cover', back: 'Back cover', shelf: 'Bookshelf', index: 'Food index', archive: 'Food archive',
-      hint: 'Drag a page · or use arrow keys', previous: 'Previous page', next: 'Next page', memory: 'View memory ↗',
+      hint: 'Drag a page · or use arrow keys', previous: 'Previous page', next: 'Next page', memory: 'View memory ↗︎',
       noPhoto: 'A meal without a photograph', empty: 'This month is waiting for its first memory.',
-      archiveHint: 'A little index of everything tasted.', fullArchive: 'Open food archive ↗', title: 'A month at the table.',
+      archiveHint: 'A little index of everything tasted.', fullArchive: 'Open food archive ↗︎', title: 'A month at the table.',
       sample: 'Sample edition', personal: 'A personal collection', kept: `${data.meals.length} meal ${data.meals.length === 1 ? 'memory' : 'memories'}`,
     };
     document.documentElement.lang = data.locale;
@@ -156,7 +156,7 @@
         byline.append(element('span', 'company-label', zh ? '同桌' : 'With'));
         for (const person of company) {
           const name = person.personId
-            ? button(`${person.name} ↗`, 'company-person', () => send('person', { id: person.personId }))
+            ? button(`${person.name} ↗︎`, 'company-person', () => send('person', { id: person.personId }))
             : element('span', 'company-snapshot', person.name);
           if (person.personId) name.setAttribute('aria-label', zh ? `我和${person.name}的餐桌` : `Our table with ${person.name}`);
           byline.append(name);

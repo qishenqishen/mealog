@@ -595,7 +595,7 @@ export default function ArchiveScreen() {
           <Text accessibilityRole="header" style={[styles.title, compact && { fontSize: 20, lineHeight: 30 }]}>{locale === 'zh' ? '把日子，翻成一册。' : 'Life, bound in little books.'}</Text>
           {activeView !== 'books' ? <Text style={styles.intro}>{locale === 'zh' ? '一月一册，收藏那些吃过、记得的日常。' : 'A book for each month. The meals you want to remember.'}</Text> : null}
           <Pressable accessibilityRole="button" style={[styles.peopleLibraryLink, compact && { top: -6 }]} onPress={() => router.push('/people')}>
-            <Text style={styles.peopleLibraryLinkText}>{locale === 'zh' ? '同桌伙伴 ↗' : 'People ↗'}</Text>
+            <Text style={styles.peopleLibraryLinkText}>{locale === 'zh' ? '同桌伙伴 ↗︎' : 'People ↗︎'}</Text>
           </Pressable>
         </View>
 
@@ -635,7 +635,7 @@ export default function ArchiveScreen() {
           />
           {selectedMonth.meals.some(meal => meal.photoUri && !meal.stickerUri) ? <Pressable accessibilityRole="button"
             style={styles.stickerPrompt} onPress={() => router.push(`/food-album?month=${selectedMonth.key}&scope=${activeScope}`)}>
-            <Text style={styles.stickerPromptText}>{locale === 'zh' ? '把照片变成可爱贴纸 ↗' : 'Turn your photos into little stickers ↗'}</Text>
+            <Text style={styles.stickerPromptText}>{locale === 'zh' ? '把照片变成可爱贴纸 ↗︎' : 'Turn your photos into little stickers ↗︎'}</Text>
           </Pressable> : null}
           </>
         ) : (
@@ -655,7 +655,7 @@ export default function ArchiveScreen() {
             style={styles.albumLink} onPress={() => router.push(`/food-album?month=${selectedMonth.key}&scope=${activeScope}`)}>
             <View style={styles.albumLinkHeading}>
               <Text style={styles.albumLinkTitle}>{locale === 'zh' ? '食物 Archive' : 'Food archive'}</Text>
-              <Text style={styles.albumLinkArrow}>↗</Text>
+              <Text style={styles.albumLinkArrow}>↗︎</Text>
             </View>
             <Text style={styles.albumLinkCaption}>{selectedMonth.meals.some((meal) => meal.photoUri && !meal.stickerUri)
               ? (locale === 'zh' ? '收好餐食贴纸，也可以为已有照片制作贴纸。' : 'Collect your stickers and make more from saved photos.')

@@ -27,7 +27,7 @@ function BookCover({ month, meals, zh, height, compact, onOpen }: {
       </View>
     </View>
     <View style={[styles.caption, compact && { marginTop: 6 }, { width: height * .76 }]}>
-      <View style={styles.captionRow}><Text style={styles.bookName}>{zh ? theme.zh : theme.en}</Text><Text style={styles.openMark}>↗</Text></View>
+      <View style={styles.captionRow}><Text style={styles.bookName}>{zh ? theme.zh : theme.en}</Text><Text style={styles.openMark}>↗︎</Text></View>
       <Text style={styles.bookCount}>{meals.length ? (zh ? `${meals.length} 餐回忆` : `${meals.length} memories`) : (zh ? '尚无记录' : 'No meals yet')}</Text>
     </View>
   </Pressable>;
@@ -62,7 +62,7 @@ export default function MonthlyBookshelf({ meals, locale, year, onYearChange, on
       </View>)}
     </View>
     {!meals.length ? <Pressable accessibilityRole="button" style={styles.addButton} onPress={onAdd}>
-      <Text style={styles.addText}>{zh ? '从平常的一餐开始' : 'Begin with an ordinary meal'} ↗</Text>
+      <Text style={styles.addText}>{zh ? '从平常的一餐开始' : 'Begin with an ordinary meal'} ↗︎</Text>
     </Pressable> : null}
     <View style={styles.colophon}><Text style={styles.colophonMark}>m.</Text><Text style={styles.colophonText}>{zh ? '每个月一本，把日常留在书里。' : 'One book a month. A little life, kept.'}</Text></View>
   </View>;

@@ -64,7 +64,7 @@ export default function MonthlyBookReader({ month, meals, companions, locale, on
             <Text style={styles.foodDate}>{item.date.slice(5).replace('-', '.')}</Text>
           </Pressable>)}</View>
           {!meals.length && <Text style={styles.empty}>{zh ? '这个月的餐桌，等你留下第一段回忆。' : 'This month is waiting for its first memory.'}</Text>}
-          {action(zh ? '打开食物档案 ↗' : 'Open food archive ↗', onArchive)}
+          {action(zh ? '打开食物档案 ↗︎' : 'Open food archive ↗︎', onArchive)}
         </> : currentPage === lastPage ? <View style={styles.titlePage}>
           <Text style={[styles.coverTitle, { color: theme.ink }]}>mealog</Text><Text style={[styles.subtitle, { color: theme.ink }]}>{month} · {meals.length} {zh ? '餐记忆' : 'meal memories'}</Text>
         </View> : meal ? <>
@@ -74,11 +74,11 @@ export default function MonthlyBookReader({ month, meals, companions, locale, on
             <Text style={styles.muted}>{zh ? '同桌' : 'With'}</Text>
             {companions[meal.id].map((person, index) => person.personId
               ? <Pressable key={person.personId} accessibilityRole="button" accessibilityLabel={zh ? `我和${person.name}的餐桌` : `Our table with ${person.name}`}
-                onPress={() => onPersonPress(person.personId!)} style={styles.button}><Text style={styles.personName}>{person.name} ↗</Text></Pressable>
+                onPress={() => onPersonPress(person.personId!)} style={styles.button}><Text style={styles.personName}>{person.name} ↗︎</Text></Pressable>
               : <Text key={`snapshot-${index}`} style={styles.muted}>{person.name}</Text>)}
           </View>}
           {meal.note ? <Text style={styles.note}>{meal.note}</Text> : null}
-          {action(zh ? '查看这餐 ↗' : 'View memory ↗', () => onMealPress(meal.id))}
+          {action(zh ? '查看这餐 ↗︎' : 'View memory ↗︎', () => onMealPress(meal.id))}
         </> : null}
       </View>
     </ScrollView>

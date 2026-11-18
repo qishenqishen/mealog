@@ -172,7 +172,7 @@ export default function PersonDetailPage() {
           ) : null}
           {Platform.OS === 'web' && visiblePerson && !person.deletedAt && scope === 'personal' && sharedMeals.length > 0 ? (
             <Pressable accessibilityRole="button" style={styles.navButton} onPress={() => router.push({ pathname: '/insights', params: { personId: person.id, slowMail: '1', date: lastDate } })}>
-              <Text style={styles.navButtonText}>{locale === 'zh' ? '写一封记忆慢递 ↗' : 'Write a memory letter ↗'}</Text>
+              <Text style={styles.navButtonText}>{locale === 'zh' ? '写一封记忆慢递 ↗︎' : 'Write a memory letter ↗︎'}</Text>
             </Pressable>
           ) : null}
         </View>

@@ -74,7 +74,7 @@ assert.equal(engine.pages.filter(page => page.className.includes('archive-page')
 assert(all(mealPages[0]).some(node => node.textContent === meal.note), 'Retain exact note without generated text');
 assert(all(mealPages[0]).some(node => node.textContent === meal.title), 'Titles remain plain text');
 const personLink = all(mealPages[0]).find(node => node.className === 'company-person');
-assert.equal(personLink.textContent, `${meal.companions[0].name} ↗`, 'Companion names remain plain text');
+assert.equal(personLink.textContent, `${meal.companions[0].name} ↗\uFE0E`, 'Companion names remain plain text');
 personLink.events.click({ stopPropagation() {} });
 assert.equal(messages.at(-1).type, 'person');
 assert.equal(messages.at(-1).id, 'friend', 'Companion byline opens the actual person');
