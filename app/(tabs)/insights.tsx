@@ -24,6 +24,7 @@ export default function InsightsScreen() {
   const [scope, setScope] = useState<'personal' | 'sample'>('personal');
   const [companions, setCompanions] = useState<MealCompanion[]>([]);
   const [slowDraft, setSlowDraft] = useState<SlowMailDraft>();
+  const beforeSampleJump = useRef<{ anchor: string; period: ReflectionPeriod } | undefined>(undefined);
   const [meals, setMeals] = useState<MealEntry[]>([]), [people, setPeople] = useState<PersonProfile[]>([]), [cache, setCache] = useState<CachedReport[]>([]);
   const [prefs, setPrefs] = useState<ProductPreferences>({ localOnlyAI: false, redact: true, analytics: false });
   const [notes, setNotes] = useState<Record<string, string>>({}), [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -32,6 +33,7 @@ export default function InsightsScreen() {
   const [shown, setShown] = useState<{ snapshot: string; scope: 'personal' | 'sample'; report: MonthlyReport }>(); const inFlight = useRef(false);
   useEffect(() => {
     if (monthlyLink) {
+      beforeSampleJump.current = undefined;
       setPeriod('month');
       setScope('personal');
       setAnchor(linkedDate || localDate());
@@ -49,6 +51,7 @@ export default function InsightsScreen() {
   }, [locale]);
   useFocusEffect(useCallback(() => { void load(); }, [load]));
   const range = useMemo(() => { try { return periodRange(anchor, period); } catch { return undefined; } }, [anchor, period]);
+  const sampleMeals = meals.filter(meal => meal.origin === 'sample');
   const scoped = meals.filter(meal => scope === 'sample' ? meal.origin === 'sample' : meal.origin !== 'sample');
   const selected = range ? filterPeriod(scoped, anchor, period, personId) : [];
   const previousAnchor = range ? new Date(`${range.start}T12:00:00`) : new Date();
@@ -84,6 +87,27 @@ export default function InsightsScreen() {
   const eligible = period !== 'week' || selected.length >= 3;
   const btn = (label: string, action: () => void, chosen = false, disabled = pending) => <Pressable accessibilityRole="button" accessibilityState={{ selected: chosen, disabled }} disabled={disabled} onPress={action} style={[styles.button, chosen && styles.chosen, disabled && { opacity: 0.45 }]}><Text style={chosen ? styles.white : styles.body}>{label}</Text></Pressable>;
   const resetConsent = () => { setConsent(false); setMessage(''); };
+  function openSampleTable() {
+    const sampleCount = range ? filterPeriod(sampleMeals, anchor, period).length : 0;
+    if (sampleMeals.length && sampleCount < (period === 'week' ? 3 : 1)) {
+      if (scope === 'personal') beforeSampleJump.current = { anchor, period };
+      setAnchor(sampleMeals[0].date);
+      setPeriod('month');
+    }
+    setScope('sample');
+    setPersonId('');
+    resetConsent();
+  }
+  function openMyTable() {
+    if (beforeSampleJump.current) {
+      setAnchor(beforeSampleJump.current.anchor);
+      setPeriod(beforeSampleJump.current.period);
+      beforeSampleJump.current = undefined;
+    }
+    setScope('personal');
+    setPersonId('');
+    resetConsent();
+  }
   async function generate() {
     if (inFlight.current || !loaded || !input || !consent || prefs.localOnlyAI || !eligible || !selected.length) return;
     inFlight.current = true; setPending(true); setMessage(''); const started = Date.now();
@@ -96,7 +120,14 @@ export default function InsightsScreen() {
     } catch (error) {
       await trackEvent('ai_failed', undefined, Date.now() - started);
       const code = error instanceof InsightError ? error.code : 'unavailable';
-      setMessage(copy(`AI unavailable (${code}). Local counts and existing cards are kept.`, `AI 暂时不可用（${code}）。本地统计与已有卡片仍然保留。`));
+      if (code === 'daily_limit') {
+        setMessage(copy('Today’s AI allowance has been used. It resets at 00:00 UTC.', '今日 AI 回顾额度已用完。额度会在 UTC 00:00 恢复。'));
+      } else if (code === 'ip_limit') {
+        const minutes = Math.ceil(((error instanceof InsightError && error.retryAfter) || 600) / 60);
+        setMessage(copy(`This network has reached its AI limit. Try again in ${minutes} min.`, `当前网络调用次数已达上限，请在 ${minutes} 分钟后再试。`));
+      } else {
+        setMessage(copy('The AI reflection could not be generated. You can retry or view your saved reflections.', '暂时未能生成 AI 回顾，可以重试或查看已保存的回顾。'));
+      }
     } finally { inFlight.current = false; setPending(false); }
   }
   async function keepCard() {
@@ -118,8 +149,10 @@ export default function InsightsScreen() {
     {period === 'month' && scope === 'personal' && Platform.OS === 'web' && <Text style={styles.body}>{copy('For Memory Mail, choose someone you ate with and compose this month’s reflection from meals with photos.', '想寄一封记忆信？先选一位同桌的人，再整理有照片的月度回顾。')}</Text>}
     <TextInput accessibilityLabel={copy('Period anchor date YYYY-MM-DD', '回顾日期 YYYY-MM-DD')} value={anchor} onChangeText={value => { setAnchor(value); resetConsent(); }} style={styles.input} maxLength={10}/>
     {!range ? <Text style={styles.error}>{copy('Enter a valid date YYYY-MM-DD', '请输入有效日期 YYYY-MM-DD')}</Text> : <Text style={styles.body}>{range.start} — {range.end}</Text>}
-    <View style={styles.wrap}>{btn(copy('My table', '我的餐桌'), () => { setScope('personal'); setPersonId(''); resetConsent(); }, scope === 'personal')}{btn(copy('Sample table', '示例餐桌'), () => { setScope('sample'); setPersonId(''); resetConsent(); }, scope === 'sample')}</View>
-    {scope === 'sample' && <Text style={styles.body}>{copy('Examples are separate from your life and your validation data.', '示例与个人生活、验证数据分开。')}</Text>}
+    <View style={styles.wrap}>{btn(copy('My table', '我的餐桌'), openMyTable, scope === 'personal')}{btn(copy('Sample table', '示例餐桌'), openSampleTable, scope === 'sample')}</View>
+    {scope === 'sample' && <Text style={styles.body}>{copy('Sample reflections use only example meals.', '示例回顾只使用示例餐食。')}</Text>}
+    {loaded && scope === 'personal' && selected.length === 0 && sampleMeals.length > 0 && !prefs.localOnlyAI && Platform.OS === 'web' &&
+      <Text style={styles.body}>{copy('No memories in this period? Open Sample table to try an AI reflection.', '这段时间没有记录？可以打开「示例餐桌」试用 AI 回顾。')}</Text>}
     <Text style={styles.heading}>{copy('Who were these moments with?', '想回到和谁的时刻？')}</Text><View style={styles.wrap}>{btn(copy('Everyone / myself', '所有人／自己'), () => { setPersonId(''); resetConsent(); }, !personId)}{people.filter(person => scope === 'sample' ? person.origin === 'sample' : person.origin !== 'sample').map(person => <View key={person.id}>{btn(person.nickname || person.name, () => { setPersonId(person.id); resetConsent(); }, personId === person.id)}</View>)}</View>
     {loadError ? <View><Text style={styles.error}>{loadError}</Text>{btn(copy('Retry', '重试'), () => void load())}</View> : !loaded ? <ActivityIndicator/> : <>
       <View style={styles.card}><Text style={styles.heading}>{copy('In these pages', '这一页里')}</Text><Text style={styles.count}>{selected.length} <Text style={styles.body}>{copy('moments', '个时刻')}</Text></Text><Text style={styles.body}>{copy(`${comparison.now.effective} contextual photo memories · ${new Set(selected.map(meal => meal.date)).size} recorded days`, `${comparison.now.effective} 条有效照片记忆 · ${new Set(selected.map(meal => meal.date)).size} 个记录日`)}</Text>
